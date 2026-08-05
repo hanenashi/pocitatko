@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.1.1
+// @version      0.1.2
 // @description  Read-only visual review helper for Okoun image-caption rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -13,7 +13,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.1.1";
+  const VERSION = "0.1.2";
   const BOARD_PATH = "/boards/vymysli_vtipny_textik";
   const IDS = {
     launcher: "pocitatko-launcher",
@@ -24,7 +24,10 @@
   const state = {
     posts: [],
     sourceId: null,
-    selectedWinnerId: null,
+    endId: null,
+    endManuallyChanged: false,
+    manualWinnerId: null,
+    excludedReactionIds: new Set(),
     olderUrl: "",
     loadedUrls: new Set(),
     loading: false,
@@ -128,6 +131,9 @@
       mergePosts(parseDocument(doc, requestedUrl));
       state.loadedUrls.add(requestedUrl);
       state.olderUrl = olderUrlFrom(doc, requestedUrl);
+      if (state.sourceId && !state.endManuallyChanged) {
+        state.endId = suggestedEndId(state.sourceId);
+      }
     } catch (error) {
       state.error = `Starší stránku se nepodařilo načíst: ${error.message}`;
     } finally {
@@ -140,26 +146,55 @@
     return state.posts.filter((post) => !post.parentId && post.imageUrls.length);
   }
 
+  function isWinnerAnnouncement(post) {
+    return /^vyhr[aá]l\b.*\bgratul/i.test(post.text);
+  }
+
+  function winnerAnnouncementsAfter(sourceId) {
+    return state.posts
+      .filter((post) => post.id > sourceId && isWinnerAnnouncement(post))
+      .sort((a, b) => a.id - b.id);
+  }
+
+  function suggestedEndId(sourceId) {
+    return winnerAnnouncementsAfter(sourceId)[0]?.id || null;
+  }
+
   function buildRound(sourceId = state.sourceId) {
     const source = state.posts.find((post) => post.id === sourceId) || null;
-    if (!source) return { source: null, candidates: [], unassigned: [] };
+    if (!source) return { source: null, end: null, candidates: [], unassigned: [] };
+    const end = state.posts.find((post) => post.id === state.endId) || null;
+    const beforeEnd = (post) => !end || post.id < end.id;
 
     const candidates = state.posts
-      .filter((post) => post.id > source.id && !post.parentId && post.imageUrls.length)
+      .filter(
+        (post) =>
+          post.id > source.id && beforeEnd(post) && !post.parentId && post.imageUrls.length,
+      )
       .map((candidate) => ({
         ...candidate,
         reactions: state.posts
-          .filter((post) => post.parentId === candidate.id)
+          .filter(
+            (post) =>
+              post.id > candidate.id &&
+              beforeEnd(post) &&
+              post.parentId === candidate.id &&
+              !isWinnerAnnouncement(post),
+          )
           .sort((a, b) => a.id - b.id),
       }))
       .sort((a, b) => a.id - b.id);
 
     const candidateIds = new Set(candidates.map((candidate) => candidate.id));
     const unassigned = state.posts.filter(
-      (post) => post.id > source.id && post.parentId && !candidateIds.has(post.parentId),
+      (post) =>
+        post.id > source.id &&
+        beforeEnd(post) &&
+        post.parentId &&
+        !candidateIds.has(post.parentId),
     );
 
-    return { source, candidates, unassigned };
+    return { source, end, candidates, unassigned };
   }
 
   function reactionWeight(text) {
@@ -172,7 +207,10 @@
 
   function candidateStats(candidate) {
     const strongestByAuthor = new Map();
-    for (const reaction of candidate.reactions) {
+    const includedReactions = candidate.reactions.filter(
+      (reaction) => !state.excludedReactionIds.has(reaction.id),
+    );
+    for (const reaction of includedReactions) {
       const weight = reactionWeight(reaction.text);
       strongestByAuthor.set(
         reaction.author,
@@ -181,7 +219,8 @@
     }
     return {
       uniqueReactors: strongestByAuthor.size,
-      reactionPosts: candidate.reactions.length,
+      reactionPosts: includedReactions.length,
+      excludedPosts: candidate.reactions.length - includedReactions.length,
       points: Array.from(strongestByAuthor.values()).reduce((sum, value) => sum + value, 0),
     };
   }
@@ -221,6 +260,8 @@
       #${IDS.overlay} [data-pocitatko-source-card] small { color: #6d665d; }
       #${IDS.overlay} [data-pocitatko-confirm] { position: sticky; bottom: 0; display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 12px; max-width: 900px; margin: 16px auto 0; padding: 10px; border: 1px solid #bfa34f; border-radius: 12px; background: #fff8d9; box-shadow: 0 6px 24px #0003; }
       #${IDS.overlay} [data-pocitatko-confirm] img { width: 92px; height: 72px; border-radius: 7px; object-fit: contain; background: #e8e2d8; }
+      #${IDS.overlay} [data-pocitatko-boundary] { grid-column: 2 / -1; display: grid; gap: 4px; }
+      #${IDS.overlay} [data-pocitatko-boundary] select { max-width: 100%; padding: 7px; border: 1px solid #aaa093; border-radius: 7px; background: #fffdf8; font: inherit; }
       #${IDS.overlay} [data-pocitatko-round] { display: grid; grid-template-columns: minmax(220px, .6fr) minmax(340px, 1.4fr); min-height: 100%; }
       #${IDS.overlay} [data-pocitatko-prompt] { position: sticky; top: 0; align-self: start; padding: 14px; }
       #${IDS.overlay} [data-pocitatko-prompt] > img { display: block; max-width: 100%; max-height: 56vh; margin: 10px auto; border-radius: 9px; object-fit: contain; background: #e8e2d8; }
@@ -235,7 +276,9 @@
       #${IDS.overlay} [data-pocitatko-chip] { padding: 3px 8px; border-radius: 999px; background: #eee8dc; font-size: 12px; }
       #${IDS.overlay} details { margin-top: 8px; }
       #${IDS.overlay} [data-pocitatko-reactions] { margin: 7px 0 0; padding-left: 21px; }
-      #${IDS.overlay} [data-pocitatko-reactions] li { margin: 4px 0; }
+      #${IDS.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }
+      #${IDS.overlay} [data-pocitatko-reactions] li.excluded { opacity: .55; text-decoration: line-through; }
+      #${IDS.overlay} [data-pocitatko-reactions] button { padding: 3px 7px; font-size: 12px; text-decoration: none; }
       #${IDS.overlay} a { color: #755800; }
       @media (max-width: 900px) {
         #${IDS.overlay} { inset: 0; border-radius: 0; }
@@ -243,6 +286,7 @@
         #${IDS.overlay} [data-pocitatko-grid] { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
         #${IDS.overlay} [data-pocitatko-confirm] { grid-template-columns: 72px 1fr; }
         #${IDS.overlay} [data-pocitatko-confirm] img { width: 72px; height: 62px; }
+        #${IDS.overlay} [data-pocitatko-boundary] { grid-column: 1 / -1; }
         #${IDS.overlay} [data-pocitatko-confirm] button { grid-column: 1 / -1; }
         #${IDS.overlay} [data-pocitatko-round] { display: block; }
         #${IDS.overlay} [data-pocitatko-prompt] { position: static; }
@@ -330,8 +374,38 @@
 
   function selectSource(postId) {
     state.sourceId = postId;
-    state.selectedWinnerId = null;
+    state.endId = suggestedEndId(postId);
+    state.endManuallyChanged = false;
+    state.manualWinnerId = null;
+    state.excludedReactionIds = new Set();
     renderSourceChooser();
+  }
+
+  function makeEndSelector(source) {
+    const wrapper = document.createElement("label");
+    wrapper.dataset.pocitatkoBoundary = "";
+    const label = document.createElement("strong");
+    label.textContent = "2. Potvrď konec kola";
+    const select = document.createElement("select");
+    const current = document.createElement("option");
+    current.value = "";
+    current.textContent = "Aktuální stav — bez koncového oznámení";
+    select.append(current);
+    winnerAnnouncementsAfter(source.id).forEach((announcement, index) => {
+      const option = document.createElement("option");
+      option.value = String(announcement.id);
+      option.textContent = `${index === 0 ? "Návrh: " : ""}${announcement.timestamp} — ${announcement.text}`;
+      select.append(option);
+    });
+    select.value = state.endId ? String(state.endId) : "";
+    select.addEventListener("change", () => {
+      state.endId = Number(select.value) || null;
+      state.endManuallyChanged = true;
+      state.manualWinnerId = null;
+      renderSourceChooser();
+    });
+    wrapper.append(label, select);
+    return wrapper;
   }
 
   function renderSourceChooser() {
@@ -402,7 +476,11 @@
       const counts = document.createElement("div");
       counts.textContent = `${selected.timestamp} · nalezeno ${round.candidates.length} soutěžních obrázků`;
       summary.append(label, counts);
-      confirm.append(summary, makeButton("Potvrdit a spočítat", renderRound, "primary"));
+      confirm.append(
+        summary,
+        makeEndSelector(selected),
+        makeButton("Potvrdit a spočítat", renderRound, "primary"),
+      );
       body.append(confirm);
     }
     body.scrollTop = 0;
@@ -414,7 +492,7 @@
     if (button) button.disabled = disabled;
   }
 
-  function renderRound() {
+  function renderRound(options = {}) {
     const { body, overlay } = overlayParts();
     if (!body || !overlay) return;
     const round = buildRound();
@@ -423,13 +501,29 @@
       return;
     }
     const ranked = rankedCandidates(round);
-    if (!state.selectedWinnerId && ranked.length) state.selectedWinnerId = ranked[0].candidate.id;
-    const selectedWinner = round.candidates.find(
-      (candidate) => candidate.id === state.selectedWinnerId,
+    const suggestedWinner = ranked[0]?.candidate || null;
+    const selectedWinner =
+      round.candidates.find((candidate) => candidate.id === state.manualWinnerId) ||
+      suggestedWinner;
+    const includedReactionCount = ranked.reduce(
+      (sum, entry) => sum + entry.stats.reactionPosts,
+      0,
+    );
+    const excludedReactionCount = ranked.reduce(
+      (sum, entry) => sum + entry.stats.excludedPosts,
+      0,
     );
 
     const buttons = [
-      makeButton("Změnit začátek", renderSourceChooser),
+      makeButton("Změnit hranice", renderSourceChooser),
+      ...(state.manualWinnerId
+        ? [
+            makeButton("Použít návrh", () => {
+              state.manualWinnerId = null;
+              renderRound();
+            }),
+          ]
+        : []),
       makeButton(
         "Kopírovat výsledek",
         () => selectedWinner && copyText(`Vyhrál/a ${selectedWinner.author}. Gratulace!`),
@@ -437,9 +531,9 @@
       ),
       makeButton("Zavřít", closeOverlay),
     ];
-    buttons[1].disabled = !selectedWinner;
+    buttons[buttons.length - 2].disabled = !selectedWinner;
     setHeader(
-      `${round.candidates.length} soutěžících · ${round.candidates.reduce((sum, candidate) => sum + candidate.reactions.length, 0)} reakcí`,
+      `${round.candidates.length} soutěžících · ${includedReactionCount} hlasů${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}`,
       buttons,
     );
     body.replaceChildren();
@@ -454,6 +548,12 @@
     const promptMeta = document.createElement("p");
     promptMeta.textContent = `${round.source.author} · ${round.source.timestamp}`;
     prompt.append(promptMeta, makePostLink(round.source));
+    const endMeta = document.createElement("p");
+    endMeta.dataset.pocitatkoMuted = "";
+    endMeta.textContent = round.end
+      ? `Konec ${state.endManuallyChanged ? "(ručně)" : "(návrh)"}: ${round.end.timestamp} — ${round.end.text}`
+      : "Konec: aktuální stav bez vítězného oznámení";
+    prompt.append(endMeta);
     if (round.unassigned.length) {
       const warning = document.createElement("p");
       warning.dataset.pocitatkoMuted = "";
@@ -474,7 +574,7 @@
       card.dataset.pocitatkoCandidate = "";
       card.dataset.postId = String(candidate.id);
       if (index === 0) card.classList.add("suggested");
-      if (candidate.id === state.selectedWinnerId) card.classList.add("winner");
+      if (candidate.id === selectedWinner?.id) card.classList.add("winner");
       const header = document.createElement("header");
       const author = document.createElement("strong");
       author.textContent = candidate.author;
@@ -497,6 +597,7 @@
         `${stats.points} bodů`,
         `${stats.uniqueReactors} lidí`,
         `${stats.reactionPosts} reakcí`,
+        stats.excludedPosts ? `${stats.excludedPosts} vyřazeno` : "",
         index === 0 ? "návrh Pociťátka" : "",
       ].filter(Boolean).forEach((label) => {
         const chip = document.createElement("span");
@@ -509,12 +610,16 @@
       const controls = document.createElement("div");
       controls.append(
         makeButton(
-          candidate.id === state.selectedWinnerId ? "Vybraný vítěz" : "Vybrat vítěze",
+          candidate.id === selectedWinner?.id
+            ? state.manualWinnerId
+              ? "Ruční vítěz"
+              : "Navržený vítěz"
+            : "Vybrat ručně",
           () => {
-            state.selectedWinnerId = candidate.id;
+            state.manualWinnerId = candidate.id;
             renderRound();
           },
-          candidate.id === state.selectedWinnerId ? "primary" : "",
+          candidate.id === selectedWinner?.id ? "primary" : "",
         ),
         document.createTextNode(" "),
         makePostLink(candidate),
@@ -522,16 +627,26 @@
       card.append(controls);
 
       const details = document.createElement("details");
-      if (candidate.reactions.length <= 6) details.open = true;
+      details.open = true;
       const summary = document.createElement("summary");
       summary.textContent = `Všechny reakce (${candidate.reactions.length})`;
       const list = document.createElement("ul");
       list.dataset.pocitatkoReactions = "";
       candidate.reactions.forEach((reaction) => {
         const item = document.createElement("li");
+        const excluded = state.excludedReactionIds.has(reaction.id);
+        if (excluded) item.classList.add("excluded");
+        const text = document.createElement("span");
         const who = document.createElement("strong");
         who.textContent = `${reaction.author}: `;
-        item.append(who, document.createTextNode(reaction.text || "(bez textu)"));
+        text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
+        const toggle = makeButton(excluded ? "Vrátit hlas" : "Nezapočítat", () => {
+          const scrollTop = body.scrollTop;
+          if (excluded) state.excludedReactionIds.delete(reaction.id);
+          else state.excludedReactionIds.add(reaction.id);
+          renderRound({ scrollTop });
+        });
+        item.append(text, toggle);
         list.append(item);
       });
       details.append(summary, list);
@@ -541,7 +656,7 @@
 
     layout.append(prompt, candidates);
     body.append(layout);
-    body.scrollTop = 0;
+    body.scrollTop = options.scrollTop || 0;
   }
 
   function copyText(value) {
@@ -554,7 +669,10 @@
     addStyles();
     state.posts = [];
     state.sourceId = null;
-    state.selectedWinnerId = null;
+    state.endId = null;
+    state.endManuallyChanged = false;
+    state.manualWinnerId = null;
+    state.excludedReactionIds = new Set();
     state.olderUrl = "";
     state.loadedUrls = new Set();
     state.error = "";
