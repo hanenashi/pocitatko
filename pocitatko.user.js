@@ -1,20 +1,29 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.1.3
+// @version      0.1.4
 // @description  Read-only visual review helper for Okoun image-caption rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
 // @updateURL    https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
 // @downloadURL  https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
+// @grant        GM_deleteValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @grant        GM_setClipboard
+// @grant        GM_setValue
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  const VERSION = "0.1.3";
+  const VERSION = "0.1.4";
   const BOARD_PATH = "/boards/vymysli_vtipny_textik";
+  const STORAGE_PREFIX = "pocitatko:";
+  const SETTINGS = {
+    launcherHidden: "launcherHidden",
+    launcherPosition: "launcherPosition",
+  };
   const IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -33,7 +42,44 @@
     loading: false,
     error: "",
     detachViewport: null,
+    detachLauncherViewport: null,
+    ignoreLauncherClickUntil: 0,
   };
+
+  const clamp = (value, minimum, maximum) =>
+    Math.min(maximum, Math.max(minimum, value));
+
+  function getSetting(key, fallback) {
+    if (typeof GM_getValue === "function") return GM_getValue(key, fallback);
+    try {
+      const value = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+      return value === null ? fallback : JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  function setSetting(key, value) {
+    if (typeof GM_setValue === "function") GM_setValue(key, value);
+    else {
+      try {
+        localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(value));
+      } catch {
+        // Storage is optional; the launcher still works for this page load.
+      }
+    }
+  }
+
+  function deleteSetting(key) {
+    if (typeof GM_deleteValue === "function") GM_deleteValue(key);
+    else {
+      try {
+        localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
+      } catch {
+        // Storage is optional.
+      }
+    }
+  }
 
   const textOf = (node) =>
     (node?.innerText || node?.textContent || "").replace(/\s+/g, " ").trim();
@@ -226,7 +272,8 @@
     const style = document.createElement("style");
     style.id = IDS.style;
     style.textContent = `
-      #${IDS.launcher} { position: fixed; z-index: 2147483000; right: 18px; bottom: 18px; border: 0; border-radius: 999px; padding: 10px 15px; background: #26231f; color: #fff; box-shadow: 0 5px 20px #0004; cursor: pointer; font: 700 14px system-ui, sans-serif; }
+      #${IDS.launcher} { position: fixed; z-index: 2147483000; border: 0; border-radius: 999px; padding: 10px 15px; background: #26231f; color: #fff; box-shadow: 0 5px 20px #0004; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; font: 700 14px system-ui, sans-serif; }
+      #${IDS.launcher}.dragging { cursor: grabbing; }
       #${IDS.overlay} { position: fixed; z-index: 2147483001; inset: 2vh 2vw; display: flex; flex-direction: column; overflow: hidden; color: #28241e; background: #f5f1e8; border: 1px solid #9f9789; border-radius: 16px; box-shadow: 0 18px 70px #0008; font: 14px/1.45 system-ui, sans-serif; }
       #${IDS.overlay} * { box-sizing: border-box; }
       #${IDS.overlay} [data-pocitatko-header] { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 14px; background: #fffdf8; border-bottom: 1px solid #d7d0c5; }
@@ -677,17 +724,151 @@
     if (state.olderUrl) await loadOneOlderPage();
   }
 
+  function launcherViewportBounds(launcher) {
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft || 0;
+    const viewportTop = viewport?.offsetTop || 0;
+    const viewportWidth = viewport?.width || window.innerWidth;
+    const viewportHeight = viewport?.height || window.innerHeight;
+    const availableWidth = Math.max(0, viewportWidth - launcher.offsetWidth);
+    const availableHeight = Math.max(0, viewportHeight - launcher.offsetHeight);
+    const insetX = Math.min(12, availableWidth / 2);
+    const insetY = Math.min(12, availableHeight / 2);
+    return {
+      minLeft: viewportLeft + insetX,
+      maxLeft: viewportLeft + availableWidth - insetX,
+      minTop: viewportTop + insetY,
+      maxTop: viewportTop + availableHeight - insetY,
+    };
+  }
+
+  function normalizedLauncherPosition() {
+    const saved = getSetting(SETTINGS.launcherPosition, { x: 1, y: 1 });
+    return {
+      x: Number.isFinite(saved?.x) ? clamp(saved.x, 0, 1) : 1,
+      y: Number.isFinite(saved?.y) ? clamp(saved.y, 0, 1) : 1,
+    };
+  }
+
+  function placeLauncher(launcher, position = normalizedLauncherPosition()) {
+    if (!launcher?.isConnected) return;
+    const bounds = launcherViewportBounds(launcher);
+    launcher.style.right = "auto";
+    launcher.style.bottom = "auto";
+    launcher.style.left = `${bounds.minLeft + position.x * (bounds.maxLeft - bounds.minLeft)}px`;
+    launcher.style.top = `${bounds.minTop + position.y * (bounds.maxTop - bounds.minTop)}px`;
+  }
+
+  function persistLauncherPosition(launcher) {
+    const bounds = launcherViewportBounds(launcher);
+    const left = clamp(parseFloat(launcher.style.left) || bounds.minLeft, bounds.minLeft, bounds.maxLeft);
+    const top = clamp(parseFloat(launcher.style.top) || bounds.minTop, bounds.minTop, bounds.maxTop);
+    const width = bounds.maxLeft - bounds.minLeft;
+    const height = bounds.maxTop - bounds.minTop;
+    setSetting(SETTINGS.launcherPosition, {
+      x: width ? (left - bounds.minLeft) / width : 0,
+      y: height ? (top - bounds.minTop) / height : 0,
+    });
+  }
+
+  function attachLauncherDragging(launcher) {
+    let drag = null;
+
+    launcher.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      drag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: parseFloat(launcher.style.left) || 0,
+        startTop: parseFloat(launcher.style.top) || 0,
+        moved: false,
+      };
+      launcher.classList.add("dragging");
+      launcher.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    });
+
+    launcher.addEventListener("pointermove", (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const deltaX = event.clientX - drag.startX;
+      const deltaY = event.clientY - drag.startY;
+      if (Math.hypot(deltaX, deltaY) > 5) drag.moved = true;
+      const bounds = launcherViewportBounds(launcher);
+      launcher.style.left = `${clamp(drag.startLeft + deltaX, bounds.minLeft, bounds.maxLeft)}px`;
+      launcher.style.top = `${clamp(drag.startTop + deltaY, bounds.minTop, bounds.maxTop)}px`;
+    });
+
+    const finishDrag = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (drag.moved) {
+        persistLauncherPosition(launcher);
+        state.ignoreLauncherClickUntil = performance.now() + 600;
+      }
+      drag = null;
+      launcher.classList.remove("dragging");
+      launcher.releasePointerCapture?.(event.pointerId);
+    };
+    launcher.addEventListener("pointerup", finishDrag);
+    launcher.addEventListener("pointercancel", finishDrag);
+  }
+
+  function removeLauncher() {
+    state.detachLauncherViewport?.();
+    state.detachLauncherViewport = null;
+    document.getElementById(IDS.launcher)?.remove();
+  }
+
   function installLauncher() {
+    if (getSetting(SETTINGS.launcherHidden, false)) return;
     if (document.getElementById(IDS.launcher)) return;
     addStyles();
     const launcher = document.createElement("button");
     launcher.id = IDS.launcher;
     launcher.type = "button";
     launcher.textContent = "Pociťátko";
-    launcher.title = `Vybrat zdroj a zkontrolovat kolo (v${VERSION})`;
-    launcher.addEventListener("click", openOverlay);
+    launcher.title = `Vybrat zdroj a zkontrolovat kolo; tlačítko lze přetáhnout (v${VERSION})`;
+    launcher.addEventListener("click", (event) => {
+      if (performance.now() < state.ignoreLauncherClickUntil) {
+        event.preventDefault();
+        return;
+      }
+      openOverlay();
+    });
     document.body.appendChild(launcher);
+    placeLauncher(launcher);
+    attachLauncherDragging(launcher);
+
+    const sync = () => placeLauncher(launcher);
+    window.addEventListener("resize", sync);
+    window.visualViewport?.addEventListener("resize", sync);
+    window.visualViewport?.addEventListener("scroll", sync);
+    state.detachLauncherViewport = () => {
+      window.removeEventListener("resize", sync);
+      window.visualViewport?.removeEventListener("resize", sync);
+      window.visualViewport?.removeEventListener("scroll", sync);
+    };
   }
+
+  function registerLauncherMenu() {
+    if (typeof GM_registerMenuCommand !== "function") return;
+    GM_registerMenuCommand("Skrýt tlačítko Pociťátko", () => {
+      setSetting(SETTINGS.launcherHidden, true);
+      removeLauncher();
+    });
+    GM_registerMenuCommand("Zobrazit tlačítko Pociťátko", () => {
+      setSetting(SETTINGS.launcherHidden, false);
+      installLauncher();
+    });
+    GM_registerMenuCommand("Resetovat polohu a zobrazit Pociťátko", () => {
+      deleteSetting(SETTINGS.launcherPosition);
+      setSetting(SETTINGS.launcherHidden, false);
+      removeLauncher();
+      installLauncher();
+    });
+  }
+
+  registerLauncherMenu();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", installLauncher, { once: true });

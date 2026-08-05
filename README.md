@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.1.3**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.1.4**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -35,6 +35,11 @@ The userscript would:
 - let the reviewer exclude and restore replies that are discussion rather than
   votes, recalculating the suggestion immediately;
 - provide copyable result text without posting it automatically.
+
+The floating Pociťátko button can be dragged with a mouse or finger. Its
+position is remembered and kept inside the visible browser area. The
+userscript manager's settings menu can hide it, show it again, or reset a
+troublesome saved position and restore the button to its safe default.
 
 The tool should remain strictly read-only. It must not post, edit, delete, or
 vote on behalf of anyone.
