@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.1.2
+// @version      0.1.3
 // @description  Read-only visual review helper for Okoun image-caption rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -13,7 +13,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.1.2";
+  const VERSION = "0.1.3";
   const BOARD_PATH = "/boards/vymysli_vtipny_textik";
   const IDS = {
     launcher: "pocitatko-launcher",
@@ -197,31 +197,16 @@
     return { source, end, candidates, unassigned };
   }
 
-  function reactionWeight(text) {
-    const bangs = (text.match(/!/g) || []).length;
-    if (bangs) return Math.min(3, bangs);
-    if (/^[\s.:;,) (\-_*+<>=/\\\p{Extended_Pictographic}]+$/u.test(text)) return 1;
-    if (/vyhr[aá]l|nejlep|super|geni[aá]l|par[aá]d|skv[eě]l/i.test(text)) return 2;
-    return 1;
-  }
-
   function candidateStats(candidate) {
-    const strongestByAuthor = new Map();
     const includedReactions = candidate.reactions.filter(
       (reaction) => !state.excludedReactionIds.has(reaction.id),
     );
-    for (const reaction of includedReactions) {
-      const weight = reactionWeight(reaction.text);
-      strongestByAuthor.set(
-        reaction.author,
-        Math.max(strongestByAuthor.get(reaction.author) || 0, weight),
-      );
-    }
+    const reactingAuthors = new Set(includedReactions.map((reaction) => reaction.author));
     return {
-      uniqueReactors: strongestByAuthor.size,
+      uniqueReactors: reactingAuthors.size,
       reactionPosts: includedReactions.length,
       excludedPosts: candidate.reactions.length - includedReactions.length,
-      points: Array.from(strongestByAuthor.values()).reduce((sum, value) => sum + value, 0),
+      points: reactingAuthors.size,
     };
   }
 
@@ -594,7 +579,7 @@
       const score = document.createElement("div");
       score.dataset.pocitatkoScore = "";
       [
-        `${stats.points} bodů`,
+        `${stats.points} hlasů`,
         `${stats.uniqueReactors} lidí`,
         `${stats.reactionPosts} reakcí`,
         stats.excludedPosts ? `${stats.excludedPosts} vyřazeno` : "",

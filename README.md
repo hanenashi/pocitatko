@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.1.2**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.1.3**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -29,8 +29,8 @@ The userscript would:
 - show every candidate alongside its image, text, reactions, authors, and links
   back to the original posts;
 - flag uncertain classifications instead of hiding them;
-- suggest a winner using transparent signals such as unique supporters and
-  explicit endorsements;
+- suggest a winner using one included vote per reacting user; `!`, `!!`,
+  `!!!!!`, and mixed punctuation such as `!@&$+` have equal weight;
 - allow manual corrections, exclusions, tie handling, and winner selection;
 - let the reviewer exclude and restore replies that are discussion rather than
   votes, recalculating the suggestion immediately;

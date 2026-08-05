@@ -148,7 +148,7 @@ Each candidate gets a clear card containing:
 - any submitted image or image URL, with a thumbnail and open-original link;
 - a link/anchor that jumps to the original Okoun post;
 - all attached reactions and discussion, grouped by author;
-- counts for unique supporters, total reaction posts, and explicit endorsements;
+- counts for unique supporters, total reaction posts, and manually excluded replies;
 - included/excluded/uncertain status;
 - a manual winner toggle.
 
@@ -161,7 +161,7 @@ phone use a sticky source-image strip and one candidate card at a time.
 Do not collapse evidence into a single number. Show:
 
 ```text
-unique supporters | total reactions | explicit endorsements | discussion flags
+unique supporters | total reactions | excluded replies | discussion flags
 ```
 
 Expand a ledger row to see the exact reaction text, author, time, target post,
@@ -186,14 +186,10 @@ local overlay state only until explicitly exported/copied.
 
 ## Winner suggestion
 
-The first score should be deliberately conservative and transparent. A useful
-starting shape is:
+The score should be deliberately conservative and transparent:
 
 ```text
-score = unique_supporters
-      + explicit_endorsements
-      + small_reaction_volume_bonus
-      - ambiguity_penalty
+score = unique included reacting users
 ```
 
 Do not pretend the formula is objective. Display the factors and label the
@@ -201,10 +197,10 @@ result `suggested winner`, `close call`, or `insufficient evidence`.
 
 Useful signals:
 
-- unique supporters matter more than repeated posts by one person;
-- an explicit “this wins”/winner-like endorsement is stronger than a bare `!`;
-- a high volume of short reactions is useful evidence but not a substitute for
-  reading the caption;
+- each reacting user contributes at most one vote to a candidate;
+- `!`, `!!`, `!!!!!`, and mixed punctuation such as `!@&$+` all carry the same
+  one-vote weight;
+- reaction text remains visible as evidence but does not change vote strength;
 - self-reactions and obvious author chatter should be visibly flagged and
   optionally excluded;
 - a tie or near-tie should result in “human decision needed,” not a forced rank.
@@ -308,8 +304,8 @@ the public clipboard by accident.
    evidence, or only as a handoff marker after manual confirmation?
 4. How much historical context is useful before the overlay becomes slow? Start
    with the current round plus a selectable 5/10/20-page window.
-5. Should scoring be purely configurable, or should the tool show several views
-   (raw count, unique-user count, and explicit-endorsement count) side by side?
+5. Should the tool show raw reaction-post count beside the authoritative
+   unique-user vote count?
 
 ## Definition of done for v1
 
