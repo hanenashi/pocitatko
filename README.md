@@ -1,5 +1,7 @@
 # Pociťátko
 
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.1.0**
+
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
 
@@ -47,3 +49,10 @@ override.
 
 See [battleplan.md](battleplan.md) for the detailed product, parsing, overlay,
 scoring, safety, and testing plan.
+
+## Versioning
+
+The userscript version is recorded in both [`VERSION`](VERSION) and the
+userscript metadata. Every coding update should bump the patch version, update
+the README version, commit the change, and push it so the install link always
+points at the latest published script.
