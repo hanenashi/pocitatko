@@ -4,6 +4,20 @@ Pociťátko uses Firebase's browser SDK. The Firebase Web configuration is publi
 application routing information and is embedded in the generated userscript;
 authorization comes from Firebase Authentication and Firestore Security Rules.
 
+## Live project status
+
+As of 6 August 2026, project `pocitatko-7541f` has:
+
+- the default Firestore database and API active;
+- the repository's emulator-tested `firestore.rules` deployed;
+- Google Authentication active;
+- `www.okoun.cz` present in Authentication's authorized domains; and
+- public round reads reachable while anonymous writes remain denied.
+
+The remaining one-time bootstrap needs an interactive browser session: sign in
+from Pociťátko, obtain the Firebase UID, create its `admins/{uid}` allowlist
+document, and save one reviewed round. No Admin SDK private key is required.
+
 ## Console setup
 
 1. Create the default Cloud Firestore database in production mode.
@@ -17,6 +31,9 @@ authorization comes from Firebase Authentication and Firestore Security Rules.
    use document existence as the allowlist.
 8. Press `Uložit do DB`. The first successful save creates the club and round
    documents.
+
+For the current project, steps 1–4 are complete. Resume at step 5 during the
+next Kiwi live-testing session.
 
 Do not switch to blanket public-write rules. Signing in does not grant write
 access unless the matching admin document exists.
