@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.5.6
+// @version      0.5.7
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.5.6";
+  var VERSION = "0.5.7";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
@@ -12831,6 +12831,64 @@
     };
   }
 
+  // src/ui/auth-return-state.js
+  var AUTH_RETURN_STORAGE_KEY = "pocitatko.ui.authReturn";
+  var AUTH_RETURN_VERSION = 1;
+  var AUTH_RETURN_MAX_AGE_MS = 15 * 60 * 1e3;
+  function finiteId(value) {
+    const id = Number(value);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  function saveAuthReturnState(storage, snapshot, now = Date.now()) {
+    try {
+      storage.setItem(AUTH_RETURN_STORAGE_KEY, JSON.stringify({
+        version: AUTH_RETURN_VERSION,
+        createdAt: now,
+        pageUrl: snapshot.pageUrl,
+        view: snapshot.view === "round" ? "round" : "chooser",
+        sourceId: finiteId(snapshot.sourceId),
+        endId: finiteId(snapshot.endId),
+        endManuallyChanged: Boolean(snapshot.endManuallyChanged),
+        manualWinnerId: finiteId(snapshot.manualWinnerId),
+        excludedReactionIds: Array.from(snapshot.excludedReactionIds || [], finiteId).filter(Boolean),
+        loadedPageCount: Math.max(1, Math.min(10, Number(snapshot.loadedPageCount) || 1)),
+        scrollTop: Math.max(0, Number(snapshot.scrollTop) || 0)
+      }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function consumeAuthReturnState(storage, pageUrl, now = Date.now()) {
+    let raw = null;
+    try {
+      raw = storage.getItem(AUTH_RETURN_STORAGE_KEY);
+      storage.removeItem(AUTH_RETURN_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+    if (!raw) return null;
+    try {
+      const snapshot = JSON.parse(raw);
+      const age = now - Number(snapshot.createdAt);
+      if (snapshot.version !== AUTH_RETURN_VERSION || snapshot.pageUrl !== pageUrl || !Number.isFinite(age) || age < 0 || age > AUTH_RETURN_MAX_AGE_MS) return null;
+      return {
+        view: snapshot.view === "round" ? "round" : "chooser",
+        sourceId: finiteId(snapshot.sourceId),
+        endId: finiteId(snapshot.endId),
+        endManuallyChanged: Boolean(snapshot.endManuallyChanged),
+        manualWinnerId: finiteId(snapshot.manualWinnerId),
+        excludedReactionIds: new Set(
+          Array.isArray(snapshot.excludedReactionIds) ? snapshot.excludedReactionIds.map(finiteId).filter(Boolean) : []
+        ),
+        loadedPageCount: Math.max(1, Math.min(10, Number(snapshot.loadedPageCount) || 1)),
+        scrollTop: Math.max(0, Number(snapshot.scrollTop) || 0)
+      };
+    } catch {
+      return null;
+    }
+  }
+
   // src/ui/overlay.js
   function createOverlay({ plugin, ids, version: version4, schemaVersion, addStyles: addStyles2, database }) {
     const state = {
@@ -13108,7 +13166,23 @@
       if (user.isAnonymous) return `DB: UID tohoto prohl\xED\u017Ee\u010De ${user.uid}`;
       return `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}`;
     }
+    const currentPageUrl = () => `${location.origin}${location.pathname}${location.search}`;
+    function rememberAuthReturnState() {
+      const { body } = overlayParts();
+      saveAuthReturnState(sessionStorage, {
+        pageUrl: currentPageUrl(),
+        view: state.view,
+        sourceId: state.sourceId,
+        endId: state.endId,
+        endManuallyChanged: state.endManuallyChanged,
+        manualWinnerId: state.manualWinnerId,
+        excludedReactionIds: state.excludedReactionIds,
+        loadedPageCount: state.loadedUrls.size,
+        scrollTop: body?.scrollTop || 0
+      });
+    }
     async function signInDatabase(method) {
+      if (method === "google") rememberAuthReturnState();
       state.databaseBusy = true;
       state.databaseMessage = "DB: p\u0159ihla\u0161ov\xE1n\xED\u2026";
       const request = method === "anonymous" ? database.signInAnonymously() : database.signInWithGoogle();
@@ -13136,6 +13210,7 @@
       }
     }
     async function makeDatabasePermanent() {
+      rememberAuthReturnState();
       state.databaseBusy = true;
       state.databaseMessage = "DB: propojuji UID s Google\u2026";
       renderRound();
@@ -13524,7 +13599,19 @@
       if (typeof GM_setClipboard === "function") GM_setClipboard(value, "text");
       else navigator.clipboard?.writeText(value);
     }
-    async function openOverlay() {
+    function restoreScrollTop(scrollTop) {
+      const apply = () => {
+        const { body } = overlayParts();
+        if (body) body.scrollTop = scrollTop;
+      };
+      apply();
+      requestAnimationFrame(() => {
+        apply();
+        requestAnimationFrame(apply);
+      });
+    }
+    async function openOverlay(options = {}) {
+      const restoreState = options.restoreState || null;
       closeOverlay();
       addStyles2(ids);
       Object.assign(state, {
@@ -13551,9 +13638,32 @@
       attachToVisualViewport(overlay);
       scanCurrentDocument();
       renderSourceChooser();
-      if (state.olderUrl) await loadOneOlderPage();
+      const targetPageCount = restoreState?.loadedPageCount || (state.olderUrl ? 2 : 1);
+      while (state.olderUrl && state.loadedUrls.size < targetPageCount) {
+        await loadOneOlderPage();
+      }
+      if (!restoreState) return;
+      Object.assign(state, {
+        sourceId: restoreState.sourceId,
+        endId: restoreState.endId,
+        endManuallyChanged: restoreState.endManuallyChanged,
+        manualWinnerId: restoreState.manualWinnerId,
+        excludedReactionIds: restoreState.excludedReactionIds
+      });
+      if (restoreState.view === "round" && state.sourceId) {
+        renderRound({ scrollTop: restoreState.scrollTop });
+      } else {
+        renderSourceChooser();
+      }
+      restoreScrollTop(restoreState.scrollTop);
     }
-    return { openOverlay, closeOverlay };
+    async function restoreAuthReturn() {
+      const restoreState = consumeAuthReturnState(sessionStorage, currentPageUrl());
+      if (!restoreState) return false;
+      await openOverlay({ restoreState });
+      return true;
+    }
+    return { openOverlay, closeOverlay, restoreAuthReturn };
   }
 
   // src/ui/styles.js
@@ -13646,7 +13756,7 @@
   });
   if (activePlugin) {
     const database = createFirestoreAdapter();
-    const { openOverlay } = createOverlay({
+    const { openOverlay, restoreAuthReturn } = createOverlay({
       plugin: activePlugin,
       ids: IDS,
       version: VERSION,
@@ -13655,5 +13765,13 @@
       database
     });
     installLauncherControls({ ids: IDS, version: VERSION, addStyles, openOverlay });
+    const restoreAfterPageLoad = () => {
+      void restoreAuthReturn();
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", restoreAfterPageLoad, { once: true });
+    } else {
+      restoreAfterPageLoad();
+    }
   }
 })();

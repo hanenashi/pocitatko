@@ -1,5 +1,6 @@
 import { olderUrlFrom, parseDocument, safeBoardUrl } from "../core/okoun.js";
 import { createRoundSnapshot } from "../core/snapshots.js";
+import { consumeAuthReturnState, saveAuthReturnState } from "./auth-return-state.js";
 
 export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, database }) {
   const state = {
@@ -304,7 +305,25 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     return `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`;
   }
 
+  const currentPageUrl = () => `${location.origin}${location.pathname}${location.search}`;
+
+  function rememberAuthReturnState() {
+    const { body } = overlayParts();
+    saveAuthReturnState(sessionStorage, {
+      pageUrl: currentPageUrl(),
+      view: state.view,
+      sourceId: state.sourceId,
+      endId: state.endId,
+      endManuallyChanged: state.endManuallyChanged,
+      manualWinnerId: state.manualWinnerId,
+      excludedReactionIds: state.excludedReactionIds,
+      loadedPageCount: state.loadedUrls.size,
+      scrollTop: body?.scrollTop || 0,
+    });
+  }
+
   async function signInDatabase(method) {
+    if (method === "google") rememberAuthReturnState();
     state.databaseBusy = true;
     state.databaseMessage = "DB: přihlašování…";
     const request = method === "anonymous"
@@ -338,6 +357,7 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
   }
 
   async function makeDatabasePermanent() {
+    rememberAuthReturnState();
     state.databaseBusy = true;
     state.databaseMessage = "DB: propojuji UID s Google…";
     renderRound();
@@ -757,7 +777,20 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     else navigator.clipboard?.writeText(value);
   }
 
-  async function openOverlay() {
+  function restoreScrollTop(scrollTop) {
+    const apply = () => {
+      const { body } = overlayParts();
+      if (body) body.scrollTop = scrollTop;
+    };
+    apply();
+    requestAnimationFrame(() => {
+      apply();
+      requestAnimationFrame(apply);
+    });
+  }
+
+  async function openOverlay(options = {}) {
+    const restoreState = options.restoreState || null;
     closeOverlay();
     addStyles(ids);
     Object.assign(state, {
@@ -779,8 +812,33 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
 
     scanCurrentDocument();
     renderSourceChooser();
-    if (state.olderUrl) await loadOneOlderPage();
+    const targetPageCount = restoreState?.loadedPageCount || (state.olderUrl ? 2 : 1);
+    while (state.olderUrl && state.loadedUrls.size < targetPageCount) {
+      await loadOneOlderPage();
+    }
+
+    if (!restoreState) return;
+    Object.assign(state, {
+      sourceId: restoreState.sourceId,
+      endId: restoreState.endId,
+      endManuallyChanged: restoreState.endManuallyChanged,
+      manualWinnerId: restoreState.manualWinnerId,
+      excludedReactionIds: restoreState.excludedReactionIds,
+    });
+    if (restoreState.view === "round" && state.sourceId) {
+      renderRound({ scrollTop: restoreState.scrollTop });
+    } else {
+      renderSourceChooser();
+    }
+    restoreScrollTop(restoreState.scrollTop);
   }
 
-  return { openOverlay, closeOverlay };
+  async function restoreAuthReturn() {
+    const restoreState = consumeAuthReturnState(sessionStorage, currentPageUrl());
+    if (!restoreState) return false;
+    await openOverlay({ restoreState });
+    return true;
+  }
+
+  return { openOverlay, closeOverlay, restoreAuthReturn };
 }

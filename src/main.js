@@ -15,7 +15,7 @@ const activePlugin = clubPlugins.find((plugin) => {
 
 if (activePlugin) {
   const database = createFirestoreAdapter();
-  const { openOverlay } = createOverlay({
+  const { openOverlay, restoreAuthReturn } = createOverlay({
     plugin: activePlugin,
     ids: IDS,
     version: VERSION,
@@ -24,4 +24,10 @@ if (activePlugin) {
     database,
   });
   installLauncherControls({ ids: IDS, version: VERSION, addStyles, openOverlay });
+  const restoreAfterPageLoad = () => { void restoreAuthReturn(); };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", restoreAfterPageLoad, { once: true });
+  } else {
+    restoreAfterPageLoad();
+  }
 }
