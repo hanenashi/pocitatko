@@ -8,14 +8,25 @@ import {
   signInWithCredential,
   signOut,
 } from "firebase/auth";
-import { doc, getFirestore, serverTimestamp, writeBatch } from "firebase/firestore/lite";
+import {
+  collection,
+  doc,
+  getDocs,
+  getFirestore,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from "firebase/firestore/lite";
 import { firebaseConfig } from "../core/firebase-config.js";
+
+const OWNER_EMAIL = "hanenashi@gmail.com";
 
 function publicUser(user) {
   return user
     ? {
         uid: user.uid,
         email: user.email || "",
+        emailVerified: user.emailVerified,
         displayName: user.displayName || "",
         isAnonymous: user.isAnonymous,
       }
@@ -87,6 +98,13 @@ export function createFirestoreAdapter() {
     return null;
   }
 
+  function requireOwner() {
+    if (user?.email?.toLowerCase() === OWNER_EMAIL && user.emailVerified) return;
+    const error = new Error("ADMIN_OWNER_REQUIRED");
+    error.code = "permission-denied";
+    throw error;
+  }
+
   if (bridgeCredential) {
     const expectedNonce = sessionStorage.getItem(AUTH_NONCE_KEY);
     const action = sessionStorage.getItem(AUTH_ACTION_KEY) || "signIn";
@@ -123,6 +141,9 @@ export function createFirestoreAdapter() {
     ready,
     currentUser: () => publicUser(user),
     authError: () => authError,
+    canManageAdmins: () => Boolean(
+      user?.email?.toLowerCase() === OWNER_EMAIL && user.emailVerified
+    ),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -145,6 +166,35 @@ export function createFirestoreAdapter() {
     },
     async signOut() {
       await signOut(auth);
+    },
+    async listAdmins() {
+      await ready;
+      requireOwner();
+      const snapshot = await getDocs(collection(database, "admins"));
+      return snapshot.docs
+        .map((adminDoc) => ({ ...adminDoc.data(), uid: adminDoc.id }))
+        .sort((a, b) => Number(Boolean(b.enabled)) - Number(Boolean(a.enabled))
+          || String(a.email || a.okounUser || a.uid).localeCompare(
+            String(b.email || b.okounUser || b.uid),
+          ));
+    },
+    async saveAdmin({ uid, email = "", okounUser = "", enabled = true }) {
+      await ready;
+      requireOwner();
+      const normalizedUid = String(uid || "").trim();
+      if (!normalizedUid || normalizedUid.includes("/") || normalizedUid.length > 128) {
+        const error = new Error("INVALID_ADMIN_UID");
+        error.code = "invalid-argument";
+        throw error;
+      }
+      await setDoc(doc(database, "admins", normalizedUid), {
+        enabled: Boolean(enabled),
+        email: String(email || "").trim(),
+        okounUser: String(okounUser || "").trim(),
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid,
+      }, { merge: true });
+      return { uid: normalizedUid };
     },
     async saveRound(snapshot, clubName) {
       await ready;

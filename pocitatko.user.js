@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.5.5
+// @version      0.5.6
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.5.5";
+  var VERSION = "0.5.6";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
@@ -8193,7 +8193,7 @@
       return d2;
     };
     function p2(d2, a) {
-      var c = q;
+      var c = q2;
       return Object.prototype.hasOwnProperty.call(c, d2) ? c[d2] : c[d2] = a(d2);
     }
     function t(d2, a) {
@@ -8206,7 +8206,7 @@
       }
       this.g = c;
     }
-    var q = {};
+    var q2 = {};
     function u(d2) {
       return -128 <= d2 && d2 < 128 ? p2(d2, function(a) {
         return new t([a | 0], a < 0 ? -1 : 0);
@@ -9045,6 +9045,9 @@
   function __PRIVATE_validateDocumentPath(e) {
     if (!DocumentKey.isDocumentKey(e)) throw new FirestoreError(d.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${e} has ${e.length}.`);
   }
+  function __PRIVATE_validateCollectionPath(e) {
+    if (DocumentKey.isDocumentKey(e)) throw new FirestoreError(d.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${e} has ${e.length}.`);
+  }
   function __PRIVATE_isPlainObject(e) {
     return "object" == typeof e && null !== e && (Object.getPrototypeOf(e) === Object.prototype || null === Object.getPrototypeOf(e));
   }
@@ -9091,6 +9094,9 @@
     return null === A ? A = (function __PRIVATE_generateInitialUniqueDebugId() {
       return 268435456 + Math.round(2147483648 * Math.random());
     })() : A++, "0x" + A.toString(16);
+  }
+  function __PRIVATE_isNullOrUndefined(e) {
+    return null == e;
   }
   function __PRIVATE_isNegativeZero(e) {
     return 0 === e && 1 / e == -1 / 0;
@@ -9481,12 +9487,23 @@
     const t = (e?.mapValue?.fields || {}).__type__?.stringValue;
     return "server_timestamp" === t;
   }
+  function __PRIVATE_getPreviousValue(e) {
+    const t = e.mapValue.fields.__previous_value__;
+    return __PRIVATE_isServerTimestamp(t) ? __PRIVATE_getPreviousValue(t) : t;
+  }
   function __PRIVATE_getLocalWriteTime(e) {
     const t = __PRIVATE_normalizeTimestamp(e.mapValue.fields.__local_write_time__.timestampValue);
     return new Timestamp(t.seconds, t.nanos);
   }
   var b = "__type__";
   var D = "__max__";
+  var N = {
+    fields: {
+      __type__: {
+        stringValue: D
+      }
+    }
+  };
   var S = "__vector__";
   var C = "value";
   function __PRIVATE_typeOrder(e) {
@@ -9564,6 +9581,104 @@
         });
     }
   }
+  function __PRIVATE_arrayValueContains(e, t) {
+    return void 0 !== (e.values || []).find(((e2) => __PRIVATE_valueEquals(e2, t)));
+  }
+  function __PRIVATE_valueCompare(e, t) {
+    if (e === t) return 0;
+    const r = __PRIVATE_typeOrder(e), n = __PRIVATE_typeOrder(t);
+    if (r !== n) return __PRIVATE_primitiveComparator(r, n);
+    switch (r) {
+      case 0:
+      case 9007199254740991:
+        return 0;
+      case 1:
+        return __PRIVATE_primitiveComparator(e.booleanValue, t.booleanValue);
+      case 2:
+        return (function __PRIVATE_compareNumbers(e2, t2) {
+          const r2 = __PRIVATE_normalizeNumber(e2.integerValue || e2.doubleValue), n2 = __PRIVATE_normalizeNumber(t2.integerValue || t2.doubleValue);
+          return r2 < n2 ? -1 : r2 > n2 ? 1 : r2 === n2 ? 0 : (
+            // one or both are NaN.
+            isNaN(r2) ? isNaN(n2) ? 0 : -1 : 1
+          );
+        })(e, t);
+      case 3:
+        return __PRIVATE_compareTimestamps(e.timestampValue, t.timestampValue);
+      case 4:
+        return __PRIVATE_compareTimestamps(__PRIVATE_getLocalWriteTime(e), __PRIVATE_getLocalWriteTime(t));
+      case 5:
+        return __PRIVATE_compareUtf8Strings(e.stringValue, t.stringValue);
+      case 6:
+        return (function __PRIVATE_compareBlobs(e2, t2) {
+          const r2 = __PRIVATE_normalizeByteString(e2), n2 = __PRIVATE_normalizeByteString(t2);
+          return r2.compareTo(n2);
+        })(e.bytesValue, t.bytesValue);
+      case 7:
+        return (function __PRIVATE_compareReferences(e2, t2) {
+          const r2 = e2.split("/"), n2 = t2.split("/");
+          for (let e3 = 0; e3 < r2.length && e3 < n2.length; e3++) {
+            const t3 = __PRIVATE_primitiveComparator(r2[e3], n2[e3]);
+            if (0 !== t3) return t3;
+          }
+          return __PRIVATE_primitiveComparator(r2.length, n2.length);
+        })(e.referenceValue, t.referenceValue);
+      case 8:
+        return (function __PRIVATE_compareGeoPoints(e2, t2) {
+          const r2 = __PRIVATE_primitiveComparator(__PRIVATE_normalizeNumber(e2.latitude), __PRIVATE_normalizeNumber(t2.latitude));
+          if (0 !== r2) return r2;
+          return __PRIVATE_primitiveComparator(__PRIVATE_normalizeNumber(e2.longitude), __PRIVATE_normalizeNumber(t2.longitude));
+        })(e.geoPointValue, t.geoPointValue);
+      case 9:
+        return __PRIVATE_compareArrays(e.arrayValue, t.arrayValue);
+      case 10:
+        return (function __PRIVATE_compareVectors(e2, t2) {
+          const r2 = e2.fields || {}, n2 = t2.fields || {}, i = r2[C]?.arrayValue, s = n2[C]?.arrayValue, o = __PRIVATE_primitiveComparator(i?.values?.length || 0, s?.values?.length || 0);
+          if (0 !== o) return o;
+          return __PRIVATE_compareArrays(i, s);
+        })(e.mapValue, t.mapValue);
+      case 11:
+        return (function __PRIVATE_compareMaps(e2, t2) {
+          if (e2 === N && t2 === N) return 0;
+          if (e2 === N) return 1;
+          if (t2 === N) return -1;
+          const r2 = e2.fields || {}, n2 = Object.keys(r2), i = t2.fields || {}, s = Object.keys(i);
+          n2.sort(), s.sort();
+          for (let e3 = 0; e3 < n2.length && e3 < s.length; ++e3) {
+            const t3 = __PRIVATE_compareUtf8Strings(n2[e3], s[e3]);
+            if (0 !== t3) return t3;
+            const o = __PRIVATE_valueCompare(r2[n2[e3]], i[s[e3]]);
+            if (0 !== o) return o;
+          }
+          return __PRIVATE_primitiveComparator(n2.length, s.length);
+        })(e.mapValue, t.mapValue);
+      default:
+        throw fail(23264, {
+          q: r
+        });
+    }
+  }
+  function __PRIVATE_compareTimestamps(e, t) {
+    if ("string" == typeof e && "string" == typeof t && e.length === t.length) return __PRIVATE_primitiveComparator(e, t);
+    const r = __PRIVATE_normalizeTimestamp(e), n = __PRIVATE_normalizeTimestamp(t), i = __PRIVATE_primitiveComparator(r.seconds, n.seconds);
+    return 0 !== i ? i : __PRIVATE_primitiveComparator(r.nanos, n.nanos);
+  }
+  function __PRIVATE_compareArrays(e, t) {
+    const r = e.values || [], n = t.values || [];
+    for (let e2 = 0; e2 < r.length && e2 < n.length; ++e2) {
+      const t2 = __PRIVATE_valueCompare(r[e2], n[e2]);
+      if (void 0 !== t2 && 0 !== t2) return t2;
+    }
+    return __PRIVATE_primitiveComparator(r.length, n.length);
+  }
+  function isArray(e) {
+    return !!e && "arrayValue" in e;
+  }
+  function __PRIVATE_isNullValue(e) {
+    return !!e && "nullValue" in e;
+  }
+  function __PRIVATE_isNanValue(e) {
+    return !!e && "doubleValue" in e && isNaN(Number(e.doubleValue));
+  }
   function __PRIVATE_isMapValue(e) {
     return !!e && "mapValue" in e;
   }
@@ -9599,6 +9714,193 @@
       ...e
     };
   }
+  var Bound = class {
+    constructor(e, t) {
+      this.position = e, this.inclusive = t;
+    }
+  };
+  var Filter = class {
+  };
+  var FieldFilter = class _FieldFilter extends Filter {
+    constructor(e, t, r) {
+      super(), this.field = e, this.op = t, this.value = r;
+    }
+    /**
+     * Creates a filter based on the provided arguments.
+     */
+    static create(e, t, r) {
+      return e.isKeyField() ? "in" === t || "not-in" === t ? this.createKeyFieldInFilter(e, t, r) : new __PRIVATE_KeyFieldFilter(e, t, r) : "array-contains" === t ? new __PRIVATE_ArrayContainsFilter(e, r) : "in" === t ? new __PRIVATE_InFilter(e, r) : "not-in" === t ? new __PRIVATE_NotInFilter(e, r) : "array-contains-any" === t ? new __PRIVATE_ArrayContainsAnyFilter(e, r) : new _FieldFilter(e, t, r);
+    }
+    static createKeyFieldInFilter(e, t, r) {
+      return "in" === t ? new __PRIVATE_KeyFieldInFilter(e, r) : new __PRIVATE_KeyFieldNotInFilter(e, r);
+    }
+    matches(e) {
+      const t = e.data.field(this.field);
+      return "!=" === this.op ? null !== t && void 0 === t.nullValue && this.matchesComparison(__PRIVATE_valueCompare(t, this.value)) : null !== t && __PRIVATE_typeOrder(this.value) === __PRIVATE_typeOrder(t) && this.matchesComparison(__PRIVATE_valueCompare(t, this.value));
+    }
+    matchesComparison(e) {
+      switch (this.op) {
+        case "<":
+          return e < 0;
+        case "<=":
+          return e <= 0;
+        case "==":
+          return 0 === e;
+        case "!=":
+          return 0 !== e;
+        case ">":
+          return e > 0;
+        case ">=":
+          return e >= 0;
+        default:
+          return fail(47266, {
+            operator: this.op
+          });
+      }
+    }
+    isInequality() {
+      return [
+        "<",
+        "<=",
+        ">",
+        ">=",
+        "!=",
+        "not-in"
+        /* Operator.NOT_IN */
+      ].indexOf(this.op) >= 0;
+    }
+    getFlattenedFilters() {
+      return [this];
+    }
+    getFilters() {
+      return [this];
+    }
+  };
+  var CompositeFilter = class _CompositeFilter extends Filter {
+    constructor(e, t) {
+      super(), this.filters = e, this.op = t, this.L = null;
+    }
+    /**
+     * Creates a filter based on the provided arguments.
+     */
+    static create(e, t) {
+      return new _CompositeFilter(e, t);
+    }
+    matches(e) {
+      return (function __PRIVATE_compositeFilterIsConjunction(e2) {
+        return "and" === e2.op;
+      })(this) ? void 0 === this.filters.find(((t) => !t.matches(e))) : void 0 !== this.filters.find(((t) => t.matches(e)));
+    }
+    getFlattenedFilters() {
+      return null !== this.L || (this.L = this.filters.reduce(((e, t) => e.concat(t.getFlattenedFilters())), [])), this.L;
+    }
+    // Returns a mutable copy of `this.filters`
+    getFilters() {
+      return Object.assign([], this.filters);
+    }
+  };
+  var __PRIVATE_KeyFieldFilter = class extends FieldFilter {
+    constructor(e, t, r) {
+      super(e, t, r), this.key = DocumentKey.fromName(r.referenceValue);
+    }
+    matches(e) {
+      const t = DocumentKey.comparator(e.key, this.key);
+      return this.matchesComparison(t);
+    }
+  };
+  var __PRIVATE_KeyFieldInFilter = class extends FieldFilter {
+    constructor(e, t) {
+      super(e, "in", t), this.keys = __PRIVATE_extractDocumentKeysFromArrayValue("in", t);
+    }
+    matches(e) {
+      return this.keys.some(((t) => t.isEqual(e.key)));
+    }
+  };
+  var __PRIVATE_KeyFieldNotInFilter = class extends FieldFilter {
+    constructor(e, t) {
+      super(e, "not-in", t), this.keys = __PRIVATE_extractDocumentKeysFromArrayValue("not-in", t);
+    }
+    matches(e) {
+      return !this.keys.some(((t) => t.isEqual(e.key)));
+    }
+  };
+  function __PRIVATE_extractDocumentKeysFromArrayValue(e, t) {
+    return (t.arrayValue?.values || []).map(((e2) => DocumentKey.fromName(e2.referenceValue)));
+  }
+  var __PRIVATE_ArrayContainsFilter = class extends FieldFilter {
+    constructor(e, t) {
+      super(e, "array-contains", t);
+    }
+    matches(e) {
+      const t = e.data.field(this.field);
+      return isArray(t) && __PRIVATE_arrayValueContains(t.arrayValue, this.value);
+    }
+  };
+  var __PRIVATE_InFilter = class extends FieldFilter {
+    constructor(e, t) {
+      super(e, "in", t);
+    }
+    matches(e) {
+      const t = e.data.field(this.field);
+      return null !== t && __PRIVATE_arrayValueContains(this.value.arrayValue, t);
+    }
+  };
+  var __PRIVATE_NotInFilter = class extends FieldFilter {
+    constructor(e, t) {
+      super(e, "not-in", t);
+    }
+    matches(e) {
+      if (__PRIVATE_arrayValueContains(this.value.arrayValue, {
+        nullValue: "NULL_VALUE"
+      })) return false;
+      const t = e.data.field(this.field);
+      return null !== t && void 0 === t.nullValue && !__PRIVATE_arrayValueContains(this.value.arrayValue, t);
+    }
+  };
+  var __PRIVATE_ArrayContainsAnyFilter = class extends FieldFilter {
+    constructor(e, t) {
+      super(e, "array-contains-any", t);
+    }
+    matches(e) {
+      const t = e.data.field(this.field);
+      return !(!isArray(t) || !t.arrayValue.values) && t.arrayValue.values.some(((e2) => __PRIVATE_arrayValueContains(this.value.arrayValue, e2)));
+    }
+  };
+  var OrderBy = class {
+    constructor(e, t = "asc") {
+      this.field = e, this.dir = t;
+    }
+  };
+  var SnapshotVersion = class _SnapshotVersion {
+    static fromTimestamp(e) {
+      return new _SnapshotVersion(e);
+    }
+    static min() {
+      return new _SnapshotVersion(new Timestamp(0, 0));
+    }
+    static max() {
+      return new _SnapshotVersion(new Timestamp(253402300799, 999999999));
+    }
+    constructor(e) {
+      this.timestamp = e;
+    }
+    compareTo(e) {
+      return this.timestamp._compareTo(e.timestamp);
+    }
+    isEqual(e) {
+      return this.timestamp.isEqual(e.timestamp);
+    }
+    /** Returns a number representation of the version for use in spec tests. */
+    toMicroseconds() {
+      return 1e6 * this.timestamp.seconds + this.timestamp.nanoseconds / 1e3;
+    }
+    toString() {
+      return "SnapshotVersion(" + this.timestamp.toString() + ")";
+    }
+    toTimestamp() {
+      return this.timestamp;
+    }
+  };
   var SortedMap = class _SortedMap {
     constructor(e, t) {
       this.comparator = e, this.root = t || LLRBNode.EMPTY;
@@ -10123,6 +10425,154 @@
       return new _ObjectValue(__PRIVATE_deepClone(this.value));
     }
   };
+  var MutableDocument = class _MutableDocument {
+    constructor(e, t, r, n, i, s, o) {
+      this.key = e, this.documentType = t, this.version = r, this.readTime = n, this.createTime = i, this.data = s, this.documentState = o;
+    }
+    /**
+     * Creates a document with no known version or data, but which can serve as
+     * base document for mutations.
+     */
+    static newInvalidDocument(e) {
+      return new _MutableDocument(
+        e,
+        0,
+        /* version */
+        SnapshotVersion.min(),
+        /* readTime */
+        SnapshotVersion.min(),
+        /* createTime */
+        SnapshotVersion.min(),
+        ObjectValue.empty(),
+        0
+        /* DocumentState.SYNCED */
+      );
+    }
+    /**
+     * Creates a new document that is known to exist with the given data at the
+     * given version.
+     */
+    static newFoundDocument(e, t, r, n) {
+      return new _MutableDocument(
+        e,
+        1,
+        /* version */
+        t,
+        /* readTime */
+        SnapshotVersion.min(),
+        /* createTime */
+        r,
+        n,
+        0
+        /* DocumentState.SYNCED */
+      );
+    }
+    /** Creates a new document that is known to not exist at the given version. */
+    static newNoDocument(e, t) {
+      return new _MutableDocument(
+        e,
+        2,
+        /* version */
+        t,
+        /* readTime */
+        SnapshotVersion.min(),
+        /* createTime */
+        SnapshotVersion.min(),
+        ObjectValue.empty(),
+        0
+        /* DocumentState.SYNCED */
+      );
+    }
+    /**
+     * Creates a new document that is known to exist at the given version but
+     * whose data is not known (e.g. a document that was updated without a known
+     * base document).
+     */
+    static newUnknownDocument(e, t) {
+      return new _MutableDocument(
+        e,
+        3,
+        /* version */
+        t,
+        /* readTime */
+        SnapshotVersion.min(),
+        /* createTime */
+        SnapshotVersion.min(),
+        ObjectValue.empty(),
+        2
+        /* DocumentState.HAS_COMMITTED_MUTATIONS */
+      );
+    }
+    /**
+     * Changes the document type to indicate that it exists and that its version
+     * and data are known.
+     */
+    convertToFoundDocument(e, t) {
+      return !this.createTime.isEqual(SnapshotVersion.min()) || 2 !== this.documentType && 0 !== this.documentType || (this.createTime = e), this.version = e, this.documentType = 1, this.data = t, this.documentState = 0, this;
+    }
+    /**
+     * Changes the document type to indicate that it doesn't exist at the given
+     * version.
+     */
+    convertToNoDocument(e) {
+      return this.version = e, this.documentType = 2, this.data = ObjectValue.empty(), this.documentState = 0, this;
+    }
+    /**
+     * Changes the document type to indicate that it exists at a given version but
+     * that its data is not known (e.g. a document that was updated without a known
+     * base document).
+     */
+    convertToUnknownDocument(e) {
+      return this.version = e, this.documentType = 3, this.data = ObjectValue.empty(), this.documentState = 2, this;
+    }
+    setHasCommittedMutations() {
+      return this.documentState = 2, this;
+    }
+    setHasLocalMutations() {
+      return this.documentState = 1, this.version = SnapshotVersion.min(), this;
+    }
+    setReadTime(e) {
+      return this.readTime = e, this;
+    }
+    get hasLocalMutations() {
+      return 1 === this.documentState;
+    }
+    get hasCommittedMutations() {
+      return 2 === this.documentState;
+    }
+    get hasPendingWrites() {
+      return this.hasLocalMutations || this.hasCommittedMutations;
+    }
+    isValidDocument() {
+      return 0 !== this.documentType;
+    }
+    isFoundDocument() {
+      return 1 === this.documentType;
+    }
+    isNoDocument() {
+      return 2 === this.documentType;
+    }
+    isUnknownDocument() {
+      return 3 === this.documentType;
+    }
+    isEqual(e) {
+      return e instanceof _MutableDocument && this.key.isEqual(e.key) && this.version.isEqual(e.version) && this.documentType === e.documentType && this.documentState === e.documentState && this.data.isEqual(e.data);
+    }
+    mutableCopy() {
+      return new _MutableDocument(this.key, this.documentType, this.version, this.readTime, this.createTime, this.data.clone(), this.documentState);
+    }
+    toString() {
+      return `Document(${this.key}, ${this.version}, ${JSON.stringify(this.data.value)}, {createTime: ${this.createTime}}), {documentType: ${this.documentType}}), {documentState: ${this.documentState}})`;
+    }
+  };
+  var __PRIVATE_TargetImpl = class {
+    constructor(e, t = null, r = [], n = [], i = null, s = null, o = null) {
+      this.path = e, this.collectionGroup = t, this.orderBy = r, this.filters = n, this.limit = i, this.startAt = s, this.endAt = o, this.$ = null;
+    }
+  };
+  function __PRIVATE_newTarget(e, t = null, r = [], n = [], i = null, s = null, o = null) {
+    return new __PRIVATE_TargetImpl(e, t, r, n, i, s, o);
+  }
   var __PRIVATE_QueryImpl = class {
     /**
      * Initializes a Query with a path and optional additional query constraints.
@@ -10138,6 +10588,45 @@
       this.U = null, this.startAt, this.endAt;
     }
   };
+  function __PRIVATE_queryNormalizedOrderBy(e) {
+    const t = __PRIVATE_debugCast(e);
+    if (null === t.B) {
+      t.B = [];
+      const e2 = /* @__PURE__ */ new Set();
+      for (const r2 of t.explicitOrderBy) t.B.push(r2), e2.add(r2.field.canonicalString());
+      const r = t.explicitOrderBy.length > 0 ? t.explicitOrderBy[t.explicitOrderBy.length - 1].dir : "asc", n = (
+        // Returns the sorted set of inequality filter fields used in this query.
+        (function __PRIVATE_getInequalityFilterFields(e3) {
+          let t2 = new SortedSet(FieldPath$1.comparator);
+          return e3.filters.forEach(((e4) => {
+            e4.getFlattenedFilters().forEach(((e5) => {
+              e5.isInequality() && (t2 = t2.add(e5.field));
+            }));
+          })), t2;
+        })(t)
+      );
+      n.forEach(((n2) => {
+        e2.has(n2.canonicalString()) || n2.isKeyField() || t.B.push(new OrderBy(n2, r));
+      })), // Add the document key field to the last if it is not explicitly ordered.
+      e2.has(FieldPath$1.keyField().canonicalString()) || t.B.push(new OrderBy(FieldPath$1.keyField(), r));
+    }
+    return t.B;
+  }
+  function __PRIVATE_queryToTarget(e) {
+    const t = __PRIVATE_debugCast(e);
+    return t.M || (t.M = __PRIVATE__queryToTarget(t, __PRIVATE_queryNormalizedOrderBy(e))), t.M;
+  }
+  function __PRIVATE__queryToTarget(e, t) {
+    if ("F" === e.limitType) return __PRIVATE_newTarget(e.path, e.collectionGroup, t, e.filters, e.limit, e.startAt, e.endAt);
+    {
+      t = t.map(((e2) => {
+        const t2 = "desc" === e2.dir ? "asc" : "desc";
+        return new OrderBy(e2.field, t2);
+      }));
+      const r = e.endAt ? new Bound(e.endAt.position, e.endAt.inclusive) : null, n = e.startAt ? new Bound(e.startAt.position, e.startAt.inclusive) : null;
+      return __PRIVATE_newTarget(e.path, e.collectionGroup, t, e.filters, e.limit, r, n);
+    }
+  }
   function __PRIVATE_toDouble(e, t) {
     if (e.useProto3Json) {
       if (isNaN(t)) return {
@@ -10255,6 +10744,35 @@
       return null;
     }
   };
+  var O = /* @__PURE__ */ (() => {
+    const e = {
+      asc: "ASCENDING",
+      desc: "DESCENDING"
+    };
+    return e;
+  })();
+  var q = /* @__PURE__ */ (() => {
+    const e = {
+      "<": "LESS_THAN",
+      "<=": "LESS_THAN_OR_EQUAL",
+      ">": "GREATER_THAN",
+      ">=": "GREATER_THAN_OR_EQUAL",
+      "==": "EQUAL",
+      "!=": "NOT_EQUAL",
+      "array-contains": "ARRAY_CONTAINS",
+      in: "IN",
+      "not-in": "NOT_IN",
+      "array-contains-any": "ARRAY_CONTAINS_ANY"
+    };
+    return e;
+  })();
+  var L = /* @__PURE__ */ (() => {
+    const e = {
+      and: "AND",
+      or: "OR"
+    };
+    return e;
+  })();
   var JsonProtoSerializer = class {
     constructor(e, t) {
       this.databaseId = e, this.useProto3Json = t;
@@ -10275,6 +10793,12 @@
   function __PRIVATE_toVersion(e, t) {
     return toTimestamp(e, t.toTimestamp());
   }
+  function __PRIVATE_fromVersion(e) {
+    return __PRIVATE_hardAssert(!!e, 49232), SnapshotVersion.fromTimestamp((function fromTimestamp(e2) {
+      const t = __PRIVATE_normalizeTimestamp(e2);
+      return new Timestamp(t.seconds, t.nanos);
+    })(e));
+  }
   function __PRIVATE_toResourceName(e, t) {
     return __PRIVATE_toResourcePath(e, t).canonicalString();
   }
@@ -10286,6 +10810,21 @@
   }
   function __PRIVATE_toName(e, t) {
     return __PRIVATE_toResourceName(e.databaseId, t.path);
+  }
+  function fromName(e, t) {
+    const r = (function __PRIVATE_fromResourceName(e2) {
+      const t2 = ResourcePath.fromString(e2);
+      return __PRIVATE_hardAssert(__PRIVATE_isValidResourceName(t2), 10190, {
+        key: t2.toString()
+      }), t2;
+    })(t);
+    if (r.get(1) !== e.databaseId.projectId) throw new FirestoreError(d.INVALID_ARGUMENT, "Tried to deserialize key from different project: " + r.get(1) + " vs " + e.databaseId.projectId);
+    if (r.get(3) !== e.databaseId.database) throw new FirestoreError(d.INVALID_ARGUMENT, "Tried to deserialize key from different database: " + r.get(3) + " vs " + e.databaseId.database);
+    return new DocumentKey((function __PRIVATE_extractLocalPathFromResourceName(e2) {
+      return __PRIVATE_hardAssert(e2.length > 4 && "documents" === e2.get(4), 29091, {
+        key: e2.toString()
+      }), e2.popFirst(5);
+    })(r));
   }
   function __PRIVATE_toMutationDocument(e, t, r) {
     return {
@@ -10354,11 +10893,132 @@
       } : fail(27497);
     })(e, t.precondition)), r;
   }
+  function __PRIVATE_toQueryTarget(e, t) {
+    const r = {
+      structuredQuery: {}
+    }, n = t.path;
+    let i;
+    null !== t.collectionGroup ? (i = n, r.structuredQuery.from = [{
+      collectionId: t.collectionGroup,
+      allDescendants: true
+    }]) : (i = n.popLast(), r.structuredQuery.from = [{
+      collectionId: n.lastSegment()
+    }]), r.parent = (function __PRIVATE_toQueryPath(e2, t2) {
+      return __PRIVATE_toResourceName(e2.databaseId, t2);
+    })(e, i);
+    const s = (function __PRIVATE_toFilters(e2) {
+      if (0 === e2.length) return;
+      return __PRIVATE_toFilter(CompositeFilter.create(
+        e2,
+        "and"
+        /* CompositeOperator.AND */
+      ));
+    })(t.filters);
+    s && (r.structuredQuery.where = s);
+    const o = (function __PRIVATE_toOrder(e2) {
+      if (0 === e2.length) return;
+      return e2.map(((e3) => (
+        // visible for testing
+        (function __PRIVATE_toPropertyOrder(e4) {
+          return {
+            field: __PRIVATE_toFieldPathReference(e4.field),
+            direction: __PRIVATE_toDirection(e4.dir)
+          };
+        })(e3)
+      )));
+    })(t.orderBy);
+    o && (r.structuredQuery.orderBy = o);
+    const a = (function __PRIVATE_toInt32Proto(e2, t2) {
+      return e2.useProto3Json || __PRIVATE_isNullOrUndefined(t2) ? t2 : {
+        value: t2
+      };
+    })(e, t.limit);
+    return null !== a && (r.structuredQuery.limit = a), t.startAt && (r.structuredQuery.startAt = (function __PRIVATE_toStartAtCursor(e2) {
+      return {
+        before: e2.inclusive,
+        values: e2.position
+      };
+    })(t.startAt)), t.endAt && (r.structuredQuery.endAt = (function __PRIVATE_toEndAtCursor(e2) {
+      return {
+        before: !e2.inclusive,
+        values: e2.position
+      };
+    })(t.endAt)), {
+      K: r,
+      parent: i
+    };
+  }
+  function __PRIVATE_toDirection(e) {
+    return O[e];
+  }
+  function __PRIVATE_toOperatorName(e) {
+    return q[e];
+  }
+  function __PRIVATE_toCompositeOperatorName(e) {
+    return L[e];
+  }
+  function __PRIVATE_toFieldPathReference(e) {
+    return {
+      fieldPath: e.canonicalString()
+    };
+  }
+  function __PRIVATE_toFilter(e) {
+    return e instanceof FieldFilter ? (function __PRIVATE_toUnaryOrFieldFilter(e2) {
+      if ("==" === e2.op) {
+        if (__PRIVATE_isNanValue(e2.value)) return {
+          unaryFilter: {
+            field: __PRIVATE_toFieldPathReference(e2.field),
+            op: "IS_NAN"
+          }
+        };
+        if (__PRIVATE_isNullValue(e2.value)) return {
+          unaryFilter: {
+            field: __PRIVATE_toFieldPathReference(e2.field),
+            op: "IS_NULL"
+          }
+        };
+      } else if ("!=" === e2.op) {
+        if (__PRIVATE_isNanValue(e2.value)) return {
+          unaryFilter: {
+            field: __PRIVATE_toFieldPathReference(e2.field),
+            op: "IS_NOT_NAN"
+          }
+        };
+        if (__PRIVATE_isNullValue(e2.value)) return {
+          unaryFilter: {
+            field: __PRIVATE_toFieldPathReference(e2.field),
+            op: "IS_NOT_NULL"
+          }
+        };
+      }
+      return {
+        fieldFilter: {
+          field: __PRIVATE_toFieldPathReference(e2.field),
+          op: __PRIVATE_toOperatorName(e2.op),
+          value: e2.value
+        }
+      };
+    })(e) : e instanceof CompositeFilter ? (function __PRIVATE_toCompositeFilter(e2) {
+      const t = e2.getFilters().map(((e3) => __PRIVATE_toFilter(e3)));
+      if (1 === t.length) return t[0];
+      return {
+        compositeFilter: {
+          op: __PRIVATE_toCompositeOperatorName(e2.op),
+          filters: t
+        }
+      };
+    })(e) : fail(54877, {
+      filter: e
+    });
+  }
   function __PRIVATE_toDocumentMask(e) {
     const t = [];
     return e.fields.forEach(((e2) => t.push(e2.canonicalString()))), {
       fieldPaths: t
     };
+  }
+  function __PRIVATE_isValidResourceName(e) {
+    return e.length >= 4 && "projects" === e.get(0) && "databases" === e.get(2);
   }
   function __PRIVATE_isProtoValueSerializable(e) {
     return !!e && "function" == typeof e._toProto && "ProtoValue" === e._protoValueType;
@@ -10400,6 +11060,19 @@
       writes: t.map(((e2) => toMutation(r.serializer, e2)))
     };
     await r.I("Commit", r.serializer.databaseId, ResourcePath.emptyPath(), n);
+  }
+  async function __PRIVATE_invokeRunQueryRpc(e, t) {
+    const r = __PRIVATE_debugCast(e), { K: n, parent: i } = __PRIVATE_toQueryTarget(r.serializer, __PRIVATE_queryToTarget(t));
+    return (await r.D("RunQuery", r.serializer.databaseId, i, {
+      structuredQuery: n.structuredQuery
+    })).filter(((e2) => !!e2.document)).map(((e2) => (function fromDocument(e3, t2, r2) {
+      const n2 = fromName(e3, t2.name), i2 = __PRIVATE_fromVersion(t2.updateTime), s = t2.createTime ? __PRIVATE_fromVersion(t2.createTime) : SnapshotVersion.min(), o = new ObjectValue({
+        mapValue: {
+          fields: t2.fields
+        }
+      }), a = MutableDocument.newFoundDocument(n2, i2, s, o);
+      return r2 && a.setHasCommittedMutations(), r2 ? a.setHasCommittedMutations() : a;
+    })(r.serializer, e2.document, void 0)));
   }
   var $ = "ComponentProvider";
   var B = /* @__PURE__ */ new Map();
@@ -10662,6 +11335,27 @@
       return new _CollectionReference(this.firestore, e, this._path);
     }
   };
+  function collection(e, t, ...r) {
+    if (e = getModularInstance(e), __PRIVATE_validateNonEmptyArgument("collection", "path", t), e instanceof Firestore) {
+      const n = ResourcePath.fromString(t, ...r);
+      return __PRIVATE_validateCollectionPath(n), new CollectionReference(
+        e,
+        /* converter= */
+        null,
+        n
+      );
+    }
+    {
+      if (!(e instanceof DocumentReference || e instanceof CollectionReference)) throw new FirestoreError(d.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
+      const n = e._path.child(ResourcePath.fromString(t, ...r));
+      return __PRIVATE_validateCollectionPath(n), new CollectionReference(
+        e.firestore,
+        /* converter= */
+        null,
+        n
+      );
+    }
+  }
   function doc(e, t, ...r) {
     if (e = getModularInstance(e), // We allow omission of 'pathString' but explicitly prohibit passing in both
     // 'undefined' and 'null'.
@@ -11296,9 +11990,246 @@
   function __PRIVATE_fieldMaskContains(e, t) {
     return e.some(((e2) => e2.isEqual(t)));
   }
+  var DocumentSnapshot = class {
+    // Note: This class is stripped down version of the DocumentSnapshot in
+    // the legacy SDK. The changes are:
+    // - No support for SnapshotMetadata.
+    // - No support for SnapshotOptions.
+    /** @hideconstructor protected */
+    constructor(e, t, r, n, i) {
+      this._firestore = e, this._userDataWriter = t, this._key = r, this._document = n, this._converter = i;
+    }
+    /** Property of the `DocumentSnapshot` that provides the document's ID. */
+    get id() {
+      return this._key.path.lastSegment();
+    }
+    /**
+     * The `DocumentReference` for the document included in the `DocumentSnapshot`.
+     */
+    get ref() {
+      return new DocumentReference(this._firestore, this._converter, this._key);
+    }
+    /**
+     * Signals whether or not the document at the snapshot's location exists.
+     *
+     * @returns true if the document exists.
+     */
+    exists() {
+      return null !== this._document;
+    }
+    /**
+     * Retrieves all fields in the document as an `Object`. Returns `undefined` if
+     * the document doesn't exist.
+     *
+     * @returns An `Object` containing all fields in the document or `undefined`
+     * if the document doesn't exist.
+     */
+    data() {
+      if (this._document) {
+        if (this._converter) {
+          const e = new QueryDocumentSnapshot(
+            this._firestore,
+            this._userDataWriter,
+            this._key,
+            this._document,
+            /* converter= */
+            null
+          );
+          return this._converter.fromFirestore(e);
+        }
+        return this._userDataWriter.convertValue(this._document.data.value);
+      }
+    }
+    /**
+     * @internal
+     * @private
+     *
+     * Retrieves all fields in the document as a proto Value. Returns `undefined` if
+     * the document doesn't exist.
+     *
+     * @returns An `Object` containing all fields in the document or `undefined`
+     * if the document doesn't exist.
+     */
+    _fieldsProto() {
+      return this._document?.data.clone().value.mapValue.fields ?? void 0;
+    }
+    /**
+     * Retrieves the field specified by `fieldPath`. Returns `undefined` if the
+     * document or field doesn't exist.
+     *
+     * @param fieldPath - The path (for example 'foo' or 'foo.bar') to a specific
+     * field.
+     * @returns The data at the specified field location or undefined if no such
+     * field exists in the document.
+     */
+    // We are using `any` here to avoid an explicit cast by our users.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    get(e) {
+      if (this._document) {
+        const t = this._document.data.field(__PRIVATE_fieldPathFromArgument("DocumentSnapshot.get", e));
+        if (null !== t) return this._userDataWriter.convertValue(t);
+      }
+    }
+  };
+  var QueryDocumentSnapshot = class extends DocumentSnapshot {
+    /**
+     * Retrieves all fields in the document as an `Object`.
+     *
+     * @override
+     * @returns An `Object` containing all fields in the document.
+     */
+    data() {
+      return super.data();
+    }
+  };
+  var QuerySnapshot = class {
+    /** @hideconstructor */
+    constructor(e, t) {
+      this._docs = t, this.query = e;
+    }
+    /** An array of all the documents in the `QuerySnapshot`. */
+    get docs() {
+      return [...this._docs];
+    }
+    /** The number of documents in the `QuerySnapshot`. */
+    get size() {
+      return this.docs.length;
+    }
+    /** True if there are no documents in the `QuerySnapshot`. */
+    get empty() {
+      return 0 === this.docs.length;
+    }
+    /**
+     * Enumerates all of the documents in the `QuerySnapshot`.
+     *
+     * @param callback - A callback to be called with a `QueryDocumentSnapshot` for
+     * each document in the snapshot.
+     * @param thisArg - The `this` binding for the callback.
+     */
+    forEach(e, t) {
+      this._docs.forEach(e, t);
+    }
+  };
+  var AbstractUserDataWriter = class {
+    convertValue(e, t = "none") {
+      switch (__PRIVATE_typeOrder(e)) {
+        case 0:
+          return null;
+        case 1:
+          return e.booleanValue;
+        case 2:
+          return __PRIVATE_normalizeNumber(e.integerValue || e.doubleValue);
+        case 3:
+          return this.convertTimestamp(e.timestampValue);
+        case 4:
+          return this.convertServerTimestamp(e, t);
+        case 5:
+          return e.stringValue;
+        case 6:
+          return this.convertBytes(__PRIVATE_normalizeByteString(e.bytesValue));
+        case 7:
+          return this.convertReference(e.referenceValue);
+        case 8:
+          return this.convertGeoPoint(e.geoPointValue);
+        case 9:
+          return this.convertArray(e.arrayValue, t);
+        case 11:
+          return this.convertObject(e.mapValue, t);
+        case 10:
+          return this.convertVectorValue(e.mapValue);
+        default:
+          throw fail(62114, {
+            value: e
+          });
+      }
+    }
+    convertObject(e, t) {
+      return this.convertObjectMap(e.fields, t);
+    }
+    /**
+     * @internal
+     */
+    convertObjectMap(e, t = "none") {
+      const r = {};
+      return forEach(e, ((e2, n) => {
+        r[e2] = this.convertValue(n, t);
+      })), r;
+    }
+    /**
+     * @internal
+     */
+    convertVectorValue(e) {
+      const t = e.fields?.[C].arrayValue?.values?.map(((e2) => __PRIVATE_normalizeNumber(e2.doubleValue)));
+      return new VectorValue(t);
+    }
+    convertGeoPoint(e) {
+      return new GeoPoint(__PRIVATE_normalizeNumber(e.latitude), __PRIVATE_normalizeNumber(e.longitude));
+    }
+    convertArray(e, t) {
+      return (e.values || []).map(((e2) => this.convertValue(e2, t)));
+    }
+    convertServerTimestamp(e, t) {
+      switch (t) {
+        case "previous":
+          const r = __PRIVATE_getPreviousValue(e);
+          return null == r ? null : this.convertValue(r, t);
+        case "estimate":
+          return this.convertTimestamp(__PRIVATE_getLocalWriteTime(e));
+        default:
+          return null;
+      }
+    }
+    convertTimestamp(e) {
+      const t = __PRIVATE_normalizeTimestamp(e);
+      return new Timestamp(t.seconds, t.nanos);
+    }
+    convertDocumentKey(e, t) {
+      const r = ResourcePath.fromString(e);
+      __PRIVATE_hardAssert(__PRIVATE_isValidResourceName(r), 9688, {
+        name: e
+      });
+      const n = new DatabaseId(r.get(1), r.get(3)), i = new DocumentKey(r.popFirst(5));
+      return n.isEqual(t) || // TODO(b/64130202): Somehow support foreign references.
+      __PRIVATE_logError(`Document ${i} contains a document reference within a different database (${n.projectId}/${n.database}) which is not supported. It will be treated as a reference in the current database (${t.projectId}/${t.database}) instead.`), i;
+    }
+  };
   function __PRIVATE_applyFirestoreDataConverter(e, t, r) {
     let n;
     return n = e ? r && (r.merge || r.mergeFields) ? e.toFirestore(t, r) : e.toFirestore(t) : t, n;
+  }
+  var __PRIVATE_LiteUserDataWriter = class extends AbstractUserDataWriter {
+    constructor(e) {
+      super(), this.firestore = e;
+    }
+    convertBytes(e) {
+      return new Bytes(e);
+    }
+    convertReference(e) {
+      const t = this.convertDocumentKey(e, this.firestore._databaseId);
+      return new DocumentReference(
+        this.firestore,
+        /* converter= */
+        null,
+        t
+      );
+    }
+  };
+  function getDocs(e) {
+    (function __PRIVATE_validateHasExplicitOrderByForLimitToLast(e2) {
+      if ("L" === e2.limitType && 0 === e2.explicitOrderBy.length) throw new FirestoreError(d.UNIMPLEMENTED, "limitToLast() queries require specifying at least one orderBy() clause");
+    })((e = __PRIVATE_cast(e, Query))._query);
+    const t = __PRIVATE_getDatastore(e.firestore), r = new __PRIVATE_LiteUserDataWriter(e.firestore);
+    return __PRIVATE_invokeRunQueryRpc(t, e._query).then(((t2) => {
+      const n = t2.map(((t3) => new QueryDocumentSnapshot(e.firestore, r, t3.key, t3, e.converter)));
+      return "L" === e._query.limitType && // Limit to last queries reverse the orderBy constraint that was
+      // specified by the user. As such, we need to reverse the order of the
+      // results to return the documents in the expected order.
+      n.reverse(), new QuerySnapshot(e, n);
+    }));
+  }
+  function setDoc(e, t, r) {
+    const n = __PRIVATE_applyFirestoreDataConverter((e = __PRIVATE_cast(e, DocumentReference)).converter, t, r), i = __PRIVATE_parseSetData(__PRIVATE_newUserDataReader(e.firestore), "setDoc", e._key, n, null !== e.converter, r);
+    return __PRIVATE_invokeCommitRpc(__PRIVATE_getDatastore(e.firestore), [i.toMutation(e._key, Precondition.none())]);
   }
   function serverTimestamp() {
     return new __PRIVATE_ServerTimestampFieldValueImpl("serverTimestamp");
@@ -11380,10 +12311,12 @@
   };
 
   // src/adapters/firestore.js
+  var OWNER_EMAIL = "hanenashi@gmail.com";
   function publicUser(user) {
     return user ? {
       uid: user.uid,
       email: user.email || "",
+      emailVerified: user.emailVerified,
       displayName: user.displayName || "",
       isAnonymous: user.isAnonymous
     } : null;
@@ -11446,6 +12379,12 @@
       location.assign(bridgeUrl.href);
       return null;
     }
+    function requireOwner() {
+      if (user?.email?.toLowerCase() === OWNER_EMAIL && user.emailVerified) return;
+      const error = new Error("ADMIN_OWNER_REQUIRED");
+      error.code = "permission-denied";
+      throw error;
+    }
     if (bridgeCredential) {
       const expectedNonce = sessionStorage.getItem(AUTH_NONCE_KEY);
       const action = sessionStorage.getItem(AUTH_ACTION_KEY) || "signIn";
@@ -11481,6 +12420,9 @@
       ready,
       currentUser: () => publicUser(user),
       authError: () => authError,
+      canManageAdmins: () => Boolean(
+        user?.email?.toLowerCase() === OWNER_EMAIL && user.emailVerified
+      ),
       subscribe(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
@@ -11503,6 +12445,32 @@
       },
       async signOut() {
         await signOut(auth);
+      },
+      async listAdmins() {
+        await ready;
+        requireOwner();
+        const snapshot = await getDocs(collection(database, "admins"));
+        return snapshot.docs.map((adminDoc) => ({ ...adminDoc.data(), uid: adminDoc.id })).sort((a, b2) => Number(Boolean(b2.enabled)) - Number(Boolean(a.enabled)) || String(a.email || a.okounUser || a.uid).localeCompare(
+          String(b2.email || b2.okounUser || b2.uid)
+        ));
+      },
+      async saveAdmin({ uid, email = "", okounUser = "", enabled = true }) {
+        await ready;
+        requireOwner();
+        const normalizedUid = String(uid || "").trim();
+        if (!normalizedUid || normalizedUid.includes("/") || normalizedUid.length > 128) {
+          const error = new Error("INVALID_ADMIN_UID");
+          error.code = "invalid-argument";
+          throw error;
+        }
+        await setDoc(doc(database, "admins", normalizedUid), {
+          enabled: Boolean(enabled),
+          email: String(email || "").trim(),
+          okounUser: String(okounUser || "").trim(),
+          updatedAt: serverTimestamp(),
+          updatedBy: user.uid
+        }, { merge: true });
+        return { uid: normalizedUid };
       },
       async saveRound(snapshot, clubName) {
         await ready;
@@ -11880,13 +12848,18 @@
       roundSnapshot: null,
       databaseBusy: false,
       databaseMessage: "",
+      admins: [],
+      adminDraft: { uid: "", email: "", okounUser: "", enabled: true },
+      adminMessage: "",
+      adminReturnView: "chooser",
       view: "closed"
     };
     database?.subscribe(() => {
-      if (document.getElementById(ids.overlay) && state.view === "round" && !state.databaseBusy) {
-        const body = overlayParts().body;
-        renderRound({ scrollTop: body?.scrollTop || 0 });
-      }
+      if (!document.getElementById(ids.overlay) || state.databaseBusy) return;
+      const body = overlayParts().body;
+      if (state.view === "round") renderRound({ scrollTop: body?.scrollTop || 0 });
+      else if (state.view === "chooser") renderSourceChooser();
+      else if (state.view === "admins") renderAdminConsole();
     });
     function mergePosts(posts) {
       const byId = new Map(state.posts.map((post) => [post.id, post]));
@@ -12043,6 +13016,7 @@
             state.loading ? "Na\u010D\xEDt\xE1m\u2026" : state.olderUrl ? "Na\u010D\xEDst star\u0161\xED str\xE1nku" : "Bez dal\u0161\xEDch str\xE1nek",
             loadOneOlderPage
           ),
+          ...database?.canManageAdmins?.() ? [makeButton("Spr\xE1va admin\u016F", () => openAdminConsole("chooser"))] : [],
           makeButton("Zav\u0159\xEDt", closeOverlay)
         ]
       );
@@ -12126,6 +13100,7 @@
       if (error?.code === "permission-denied") {
         return "DB: z\xE1pis odm\xEDtnut \u2014 UID je\u0161t\u011B nen\xED v kolekci admins nebo nejsou nasazen\xE1 pravidla";
       }
+      if (error?.code === "invalid-argument") return "DB: zadejte platn\xE9 Firebase UID";
       return `DB: ${error?.message || "nezn\xE1m\xE1 chyba"}`;
     }
     function databaseUserMessage(user) {
@@ -12190,6 +13165,186 @@
         renderRound();
       }
     }
+    function adminInput(labelText, key, options = {}) {
+      const label = document.createElement("label");
+      const title = document.createElement("strong");
+      title.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = options.type || "text";
+      input.placeholder = options.placeholder || "";
+      input.autocomplete = options.autocomplete || "off";
+      input.value = state.adminDraft[key];
+      input.addEventListener("input", () => {
+        state.adminDraft[key] = input.value;
+      });
+      label.append(title, input);
+      return label;
+    }
+    function returnFromAdminConsole() {
+      if (state.adminReturnView === "round" && state.roundSnapshot) renderRound();
+      else renderSourceChooser();
+    }
+    async function loadAdmins() {
+      state.databaseBusy = true;
+      state.adminMessage = "Na\u010D\xEDt\xE1m seznam admin\u016F\u2026";
+      renderAdminConsole();
+      try {
+        state.admins = await database.listAdmins();
+        state.adminMessage = `Na\u010Dteno ${state.admins.length} z\xE1znam\u016F.`;
+      } catch (error) {
+        state.adminMessage = databaseErrorMessage(error);
+      } finally {
+        state.databaseBusy = false;
+        renderAdminConsole();
+      }
+    }
+    async function saveAdminDraft() {
+      state.databaseBusy = true;
+      state.adminMessage = "Ukl\xE1d\xE1m admina\u2026";
+      renderAdminConsole();
+      try {
+        const result = await database.saveAdmin(state.adminDraft);
+        state.adminDraft = { uid: "", email: "", okounUser: "", enabled: true };
+        state.adminMessage = `Admin ${result.uid} byl ulo\u017Een.`;
+        state.admins = await database.listAdmins();
+      } catch (error) {
+        state.adminMessage = databaseErrorMessage(error);
+      } finally {
+        state.databaseBusy = false;
+        renderAdminConsole();
+      }
+    }
+    async function toggleAdmin(admin) {
+      state.databaseBusy = true;
+      state.adminMessage = admin.enabled ? "Zakazuji p\u0159\xEDstup\u2026" : "Povoluji p\u0159\xEDstup\u2026";
+      renderAdminConsole();
+      try {
+        await database.saveAdmin({ ...admin, enabled: !admin.enabled });
+        state.admins = await database.listAdmins();
+        state.adminMessage = `${admin.uid}: p\u0159\xEDstup ${admin.enabled ? "zak\xE1z\xE1n" : "povolen"}.`;
+      } catch (error) {
+        state.adminMessage = databaseErrorMessage(error);
+      } finally {
+        state.databaseBusy = false;
+        renderAdminConsole();
+      }
+    }
+    function openAdminConsole(returnView = state.view) {
+      if (!database?.canManageAdmins?.()) return;
+      state.adminReturnView = returnView === "round" ? "round" : "chooser";
+      state.adminDraft = { uid: "", email: "", okounUser: "", enabled: true };
+      state.adminMessage = "";
+      state.view = "admins";
+      void loadAdmins();
+    }
+    function renderAdminConsole() {
+      const { body } = overlayParts();
+      if (!body) return;
+      state.view = "admins";
+      const activeCount = state.admins.filter((admin) => admin.enabled).length;
+      setHeader(`Spr\xE1va admin\u016F \xB7 ${activeCount} aktivn\xEDch`, [
+        makeButton("Zp\u011Bt", returnFromAdminConsole),
+        makeButton(state.databaseBusy ? "Na\u010D\xEDt\xE1m\u2026" : "Obnovit", loadAdmins),
+        makeButton("Zav\u0159\xEDt", closeOverlay)
+      ]);
+      body.replaceChildren();
+      const intro = document.createElement("section");
+      intro.dataset.pocitatkoAdminIntro = "";
+      const heading = document.createElement("h3");
+      heading.textContent = "Admin konzole";
+      const explanation = document.createElement("p");
+      explanation.textContent = "P\u0159\xEDstup se ud\u011Bluje Firebase UID. E-mail a Okoun jm\xE9no jsou pouze popisky pro orientaci.";
+      const owner = document.createElement("p");
+      owner.dataset.pocitatkoMuted = "";
+      owner.textContent = "Spr\xE1vu m\u016F\u017Ee podle Firestore pravidel pou\u017E\xEDvat pouze ov\u011B\u0159en\xFD \xFA\u010Det hanenashi@gmail.com.";
+      intro.append(heading, explanation, owner);
+      if (state.adminMessage) {
+        const message = document.createElement("p");
+        message.dataset.pocitatkoMuted = "";
+        message.textContent = state.adminMessage;
+        intro.append(message);
+      }
+      const form = document.createElement("form");
+      form.dataset.pocitatkoAdminForm = "";
+      form.append(
+        adminInput("Firebase UID", "uid", { placeholder: "nap\u0159. prxK9Ys\u2026" }),
+        adminInput("Google e-mail (voliteln\xE9)", "email", {
+          type: "email",
+          placeholder: "moderator@example.com",
+          autocomplete: "email"
+        }),
+        adminInput("Okoun u\u017Eivatel (voliteln\xE9)", "okounUser", { placeholder: "Blasnik" })
+      );
+      const enabledLabel = document.createElement("label");
+      enabledLabel.dataset.pocitatkoAdminEnabled = "";
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.checked = state.adminDraft.enabled;
+      enabled.addEventListener("change", () => {
+        state.adminDraft.enabled = enabled.checked;
+      });
+      enabledLabel.append(enabled, document.createTextNode(" P\u0159\xEDstup povolen"));
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.className = "primary";
+      save.textContent = state.databaseBusy ? "Ukl\xE1d\xE1m\u2026" : "Ulo\u017Eit admina";
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (!state.databaseBusy) void saveAdminDraft();
+      });
+      const clear = makeButton("Vy\u010Distit formul\xE1\u0159", () => {
+        state.adminDraft = { uid: "", email: "", okounUser: "", enabled: true };
+        renderAdminConsole();
+      });
+      form.append(enabledLabel, save, clear);
+      const list = document.createElement("section");
+      list.dataset.pocitatkoAdminList = "";
+      const listTitle = document.createElement("h3");
+      listTitle.textContent = "Z\xE1znamy v admins";
+      list.append(listTitle);
+      if (!state.admins.length && !state.databaseBusy) {
+        const empty = document.createElement("p");
+        empty.textContent = "Zat\xEDm tu nejsou \u017E\xE1dn\xE9 admin z\xE1znamy.";
+        list.append(empty);
+      }
+      for (const admin of state.admins) {
+        const card = document.createElement("article");
+        card.dataset.pocitatkoAdminCard = "";
+        if (!admin.enabled) card.classList.add("disabled");
+        const cardHeader = document.createElement("header");
+        const name4 = document.createElement("strong");
+        name4.textContent = admin.okounUser || admin.email || admin.uid;
+        const status = document.createElement("span");
+        status.dataset.pocitatkoChip = "";
+        status.textContent = admin.enabled ? "aktivn\xED" : "zak\xE1zan\xFD";
+        cardHeader.append(name4, status);
+        const uid = document.createElement("code");
+        uid.textContent = admin.uid;
+        const labels = document.createElement("p");
+        labels.dataset.pocitatkoMuted = "";
+        labels.textContent = [admin.email, admin.okounUser].filter(Boolean).join(" \xB7 ") || "Bez popisku";
+        const controls = document.createElement("div");
+        controls.append(
+          makeButton("Upravit", () => {
+            state.adminDraft = {
+              uid: admin.uid,
+              email: admin.email || "",
+              okounUser: admin.okounUser || "",
+              enabled: Boolean(admin.enabled)
+            };
+            renderAdminConsole();
+            body.scrollTop = 0;
+          }),
+          makeButton(admin.enabled ? "Zak\xE1zat" : "Povolit", () => toggleAdmin(admin))
+        );
+        card.append(cardHeader, uid, labels, controls);
+        list.append(card);
+      }
+      body.append(intro, form, list);
+      body.querySelectorAll("button, input").forEach((control) => {
+        control.disabled = state.databaseBusy;
+      });
+    }
     function renderRound(options = {}) {
       const { body, overlay } = overlayParts();
       if (!body || !overlay) return;
@@ -12223,6 +13378,7 @@
         makeButton(state.databaseBusy ? "DB pracuje\u2026" : "Ulo\u017Eit do DB", saveRoundToDatabase),
         makeButton("Kop\xEDrovat UID", () => copyText(user.uid)),
         ...user.isAnonymous ? [makeButton("Zachovat UID p\u0159es Google", makeDatabasePermanent)] : [],
+        ...database.canManageAdmins?.() ? [makeButton("Spr\xE1va admin\u016F", () => openAdminConsole("round"))] : [],
         makeButton(user.isAnonymous ? "Odhl\xE1sit (UID nep\u016Fjde obnovit)" : "Odhl\xE1sit DB", signOutDatabase)
       ] : [
         makeButton(
@@ -12445,6 +13601,20 @@
     #${ids.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }
     #${ids.overlay} [data-pocitatko-reactions] li.excluded { opacity: .55; text-decoration: line-through; }
     #${ids.overlay} [data-pocitatko-reactions] button { padding: 3px 7px; font-size: 12px; text-decoration: none; }
+    #${ids.overlay} [data-pocitatko-admin-intro], #${ids.overlay} [data-pocitatko-admin-form], #${ids.overlay} [data-pocitatko-admin-list] { max-width: 980px; margin: 0 auto 14px; }
+    #${ids.overlay} [data-pocitatko-admin-intro] { padding: 14px; border-radius: 12px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-admin-intro] h3 { margin-top: 0; }
+    #${ids.overlay} [data-pocitatko-admin-form] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 14px; border: 1px solid #d7d0c5; border-radius: 12px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-admin-form] label:not([data-pocitatko-admin-enabled]) { display: grid; gap: 5px; }
+    #${ids.overlay} [data-pocitatko-admin-form] input[type="text"], #${ids.overlay} [data-pocitatko-admin-form] input[type="email"] { min-width: 0; width: 100%; border: 1px solid #aaa093; border-radius: 8px; padding: 9px 10px; background: #fffdf8; color: inherit; font: inherit; }
+    #${ids.overlay} [data-pocitatko-admin-enabled] { display: flex; align-items: center; }
+    #${ids.overlay} [data-pocitatko-admin-list] { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    #${ids.overlay} [data-pocitatko-admin-list] > h3 { grid-column: 1 / -1; margin-bottom: 0; }
+    #${ids.overlay} [data-pocitatko-admin-card] { min-width: 0; padding: 12px; border: 1px solid #d7d0c5; border-radius: 12px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-admin-card].disabled { opacity: .62; }
+    #${ids.overlay} [data-pocitatko-admin-card] header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #${ids.overlay} [data-pocitatko-admin-card] code { display: block; overflow-wrap: anywhere; margin: 8px 0; }
+    #${ids.overlay} [data-pocitatko-admin-card] > div { display: flex; flex-wrap: wrap; gap: 7px; }
     #${ids.overlay} a { color: #755800; }
     @media (max-width: 900px) {
       #${ids.overlay} { inset: 0; border-radius: 0; }
@@ -12459,6 +13629,8 @@
       #${ids.overlay} [data-pocitatko-prompt] > img { max-height: 34vh; }
       #${ids.overlay} [data-pocitatko-candidates] { padding: 10px 0; border: 0; }
       #${ids.overlay} [data-pocitatko-candidate] img { max-height: 42vh; }
+      #${ids.overlay} [data-pocitatko-admin-form] { grid-template-columns: 1fr; }
+      #${ids.overlay} [data-pocitatko-admin-list] { grid-template-columns: 1fr; }
     }
   `;
     document.head.appendChild(style);
