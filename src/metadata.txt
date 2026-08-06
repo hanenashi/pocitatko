@@ -1,0 +1,15 @@
+// ==UserScript==
+// @name         Pociťátko
+// @namespace    https://github.com/hanenashi/pocitatko
+// @version      0.3.0
+// @description  Read-only visual review helper for Okoun club rounds.
+// @author       hanenashi
+// @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
+// @updateURL    https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
+// @downloadURL  https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
+// @grant        GM_deleteValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
+// @grant        GM_setValue
+// ==/UserScript==

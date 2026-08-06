@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.2.0**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.3.0**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -33,6 +33,23 @@ tallies, exclusions, winner selection, author keys, and avatar URLs. This data
 remains local today; a future opt-in storage adapter can send it to Firestore
 for historical results and live club statistics without coupling the database
 to parsing rules.
+
+## Development
+
+The maintainable source lives in `src/`: shared parsing and snapshots under
+`src/core/`, club behavior under `src/plugins/`, and browser UI under
+`src/ui/`. The root `pocitatko.user.js` is a generated, committed bundle so the
+direct install link remains simple and reliable.
+
+```sh
+npm install
+npm run build
+npm run check
+```
+
+`npm run check` fails when the published userscript no longer matches its
+modules. Update `src/metadata.txt`, `src/constants.js`, `VERSION`, this README,
+and `package.json` together when bumping a release.
 
 ## How
 
