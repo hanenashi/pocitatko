@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.4.1
+// @version      0.4.2
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -16,7 +16,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.4.1";
+  var VERSION = "0.4.2";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
@@ -11395,7 +11395,8 @@
     return user ? { uid: user.uid, email: user.email || "", displayName: user.displayName || "" } : null;
   }
   function prefersRedirectSignIn() {
-    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const touchFirst = navigator.maxTouchPoints > 0 && !window.matchMedia("(hover: hover)").matches;
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || touchFirst;
   }
   function createFirestoreAdapter() {
     const app = initializeApp(firebaseConfig);

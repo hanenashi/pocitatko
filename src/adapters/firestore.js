@@ -18,7 +18,9 @@ function publicUser(user) {
 }
 
 function prefersRedirectSignIn() {
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const touchFirst = navigator.maxTouchPoints > 0 &&
+    !window.matchMedia("(hover: hover)").matches;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || touchFirst;
 }
 
 export function createFirestoreAdapter() {
