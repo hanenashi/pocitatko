@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-Pociťátko `v0.5.6` is live and working on Okoun. Google/Firebase authentication now keeps a stable UID through the hosted credential bridge, Firestore writes are allowlisted, and an owner-only admin console is available to the verified Firebase account `hanenashi@gmail.com`.
+Pociťátko `v0.5.7` restores the exact reviewed screen after the hosted Google redirect. Google/Firebase authentication keeps a stable UID through the credential bridge, Firestore writes are allowlisted, and an owner-only admin console is available to the verified Firebase account `hanenashi@gmail.com`.
 
 PRs #2 and #3 are merged. Local `main` and `origin/main` are both at `c0920d8` (`Merge pull request #3 from hanenashi/agent/owner-admin-console`). The working tree was clean at handoff time.
 
@@ -12,7 +12,7 @@ PRs #2 and #3 are merged. Local `main` and `origin/main` are both at `c0920d8` (
 - Local checkout: `C:\TEMP\pocitatko-review`
 - GitHub: `hanenashi/pocitatko`
 - Firebase project: `pocitatko-7541f`
-- Current version: `0.5.6`
+- Current source version: `0.5.7`
 - Generated userscript: `pocitatko.user.js`
 - Chrome/Tampermonkey was manually updated to v0.5.6 and live-tested on `https://www.okoun.cz/boards/vymysli_vtipny_textik`.
 
@@ -30,12 +30,12 @@ PRs #2 and #3 are merged. Local `main` and `origin/main` are both at `c0920d8` (
 
 Current live admin entry:
 
-- Firebase UID: `byodRFAT7QSDWL5h3yR7hcAuMSk1`
+- Firebase UID: `BOnOPM3Jc5Z0sYzUEtcCflmaxDJ3`
 - Label email: `hanenashi@gmail.com`
 - Okoun label: `Blasnik`
 - `enabled: true`
 
-An older/deleted UID (`prxK9YsRJYZWfFMEV4l54NxnNXl2`) was briefly added during QA, then disabled and deleted. The admin list was refreshed afterward and contained exactly the current UID above.
+Older/deleted UIDs (`prxK9YsRJYZWfFMEV4l54NxnNXl2` and `byodRFAT7QSDWL5h3yR7hcAuMSk1`) were removed. The admin list contains exactly the current UID above.
 
 ## Owner admin console
 
