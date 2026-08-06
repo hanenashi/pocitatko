@@ -13,11 +13,13 @@ As of 6 August 2026, project `pocitatko-7541f` has:
 - Google Authentication active;
 - `www.okoun.cz` present in Authentication's authorized domains; and
 - a first-party mobile authentication bridge under Firebase Hosting; and
-- public round reads reachable while anonymous writes remain denied.
+- public round reads reachable while anonymous writes remain denied;
+- the first moderator UID allowlisted; and
+- live round `clubs/vymysli_vtipny_textik/rounds/1074685846` saved from Kiwi.
 
-The remaining one-time bootstrap needs an interactive browser session: sign in
-from Pociťátko, obtain the Firebase UID, create its `admins/{uid}` allowlist
-document, and save one reviewed round. No Admin SDK private key is required.
+The initial end-to-end bootstrap is complete. Future moderators still need an
+explicit `admins/{uid}` allowlist document before their first write. No Admin
+SDK private key is required.
 
 ## Console setup
 
@@ -35,8 +37,8 @@ document, and save one reviewed round. No Admin SDK private key is required.
 9. Press `Uložit do DB`. The first successful save creates the club and round
    documents.
 
-For the current project, steps 1–5 are complete. Resume at step 6 during the
-next Kiwi live-testing session.
+For the current project, steps 1–9 are complete. The first live save was also
+read back anonymously to verify the public historical-results path.
 
 Do not switch to blanket public-write rules. Signing in does not grant write
 access unless the matching admin document exists.

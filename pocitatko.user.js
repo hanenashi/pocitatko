@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.5.1
+// @version      0.5.2
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.5.1";
+  var VERSION = "0.5.2";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
