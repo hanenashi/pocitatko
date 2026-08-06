@@ -5,6 +5,7 @@ import {
   getAuth,
   getRedirectResult,
   GoogleAuthProvider,
+  signOut,
   signInWithRedirect,
 } from "firebase/auth";
 import { firebaseConfig } from "./core/firebase-config.js";
@@ -51,6 +52,7 @@ async function run() {
   show("Dokončuji přihlášení…");
   const result = await getRedirectResult(auth);
   if (!result) {
+    if (action === "link") await signOut(auth);
     show("Otevírám přihlášení Google…");
     await signInWithRedirect(auth, new GoogleAuthProvider());
     return;

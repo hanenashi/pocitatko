@@ -5527,6 +5527,9 @@
   function beforeAuthStateChanged(auth, callback, onAbort) {
     return getModularInstance(auth).beforeAuthStateChanged(callback, onAbort);
   }
+  function signOut(auth) {
+    return getModularInstance(auth).signOut();
+  }
   async function deleteUser(user) {
     return getModularInstance(user).delete();
   }
@@ -8019,6 +8022,7 @@
     show("Dokon\u010Duji p\u0159ihl\xE1\u0161en\xED\u2026");
     const result = await getRedirectResult(auth);
     if (!result) {
+      if (action === "link") await signOut(auth);
       show("Otev\xEDr\xE1m p\u0159ihl\xE1\u0161en\xED Google\u2026");
       await signInWithRedirect(auth, new GoogleAuthProvider());
       return;
