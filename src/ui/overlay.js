@@ -277,6 +277,12 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     if (error?.code === "auth/operation-not-allowed") {
       return "DB: anonymní přihlášení ještě není povolené ve Firebase Authentication";
     }
+    if (error?.code === "auth/credential-already-in-use") {
+      return "DB: tento Google účet už patří jinému Firebase UID";
+    }
+    if (error?.code === "auth/link-requires-anonymous") {
+      return "DB: anonymní UID už není aktivní — přihlaste se přes Google";
+    }
     if (error?.code === "permission-denied") {
       return "DB: zápis odmítnut — UID ještě není v kolekci admins nebo nejsou nasazená pravidla";
     }
@@ -314,6 +320,21 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     try {
       await database.signOut();
       state.databaseMessage = "DB: odhlášeno";
+    } catch (error) {
+      state.databaseMessage = databaseErrorMessage(error);
+    } finally {
+      state.databaseBusy = false;
+      renderRound();
+    }
+  }
+
+  async function makeDatabasePermanent() {
+    state.databaseBusy = true;
+    state.databaseMessage = "DB: propojuji UID s Google…";
+    renderRound();
+    try {
+      await database.makePermanentWithGoogle();
+      state.databaseMessage = "DB: pokračujte propojením na stránce Google…";
     } catch (error) {
       state.databaseMessage = databaseErrorMessage(error);
     } finally {
@@ -377,7 +398,10 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
         ? [
             makeButton(state.databaseBusy ? "DB pracuje…" : "Uložit do DB", saveRoundToDatabase),
             makeButton("Kopírovat UID", () => copyText(user.uid)),
-            makeButton("Odhlásit DB", signOutDatabase),
+            ...(user.isAnonymous
+              ? [makeButton("Zachovat UID přes Google", makeDatabasePermanent)]
+              : []),
+            makeButton(user.isAnonymous ? "Odhlásit (UID nepůjde obnovit)" : "Odhlásit DB", signOutDatabase),
           ]
         : [
             makeButton(

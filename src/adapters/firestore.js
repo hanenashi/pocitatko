@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
+  linkWithCredential,
   onAuthStateChanged,
   signInAnonymously as firebaseSignInAnonymously,
   signInWithCredential,
@@ -23,6 +24,7 @@ function publicUser(user) {
 
 const AUTH_HASH_KEY = "pocitatko-auth";
 const AUTH_NONCE_KEY = "pocitatko.firebase.authNonce";
+const AUTH_ACTION_KEY = "pocitatko.firebase.authAction";
 
 function encodeNonce() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -71,17 +73,47 @@ export function createFirestoreAdapter() {
     });
   });
 
+  function startGoogleBridge(action) {
+    authError = null;
+    const nonce = encodeNonce();
+    sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
+    sessionStorage.setItem(AUTH_ACTION_KEY, action);
+    const returnUrl = `${location.origin}${location.pathname}${location.search}`;
+    const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
+    bridgeUrl.searchParams.set("returnUrl", returnUrl);
+    bridgeUrl.searchParams.set("nonce", nonce);
+    location.assign(bridgeUrl.href);
+    return null;
+  }
+
   if (bridgeCredential) {
     const expectedNonce = sessionStorage.getItem(AUTH_NONCE_KEY);
+    const action = sessionStorage.getItem(AUTH_ACTION_KEY) || "signIn";
     sessionStorage.removeItem(AUTH_NONCE_KEY);
+    sessionStorage.removeItem(AUTH_ACTION_KEY);
     if (bridgeCredential.error || !expectedNonce || bridgeCredential.nonce !== expectedNonce || !bridgeCredential.idToken) {
       authError = new Error(bridgeCredential.error || "AUTH_BRIDGE_INVALID_RESPONSE");
       notifyListeners();
     } else {
-      signInWithCredential(auth, GoogleAuthProvider.credential(bridgeCredential.idToken)).catch((error) => {
-        authError = error;
-        notifyListeners();
-      });
+      void (async () => {
+        try {
+          await ready;
+          const credential = GoogleAuthProvider.credential(bridgeCredential.idToken);
+          if (action === "link") {
+            if (!user?.isAnonymous) {
+              const error = new Error("AUTH_LINK_REQUIRES_ANONYMOUS");
+              error.code = "auth/link-requires-anonymous";
+              throw error;
+            }
+            await linkWithCredential(user, credential);
+          } else {
+            await signInWithCredential(auth, credential);
+          }
+        } catch (error) {
+          authError = error;
+          notifyListeners();
+        }
+      })();
     }
   }
 
@@ -94,15 +126,15 @@ export function createFirestoreAdapter() {
       return () => listeners.delete(listener);
     },
     async signInWithGoogle() {
-      authError = null;
-      const nonce = encodeNonce();
-      sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
-      const returnUrl = `${location.origin}${location.pathname}${location.search}`;
-      const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
-      bridgeUrl.searchParams.set("returnUrl", returnUrl);
-      bridgeUrl.searchParams.set("nonce", nonce);
-      location.assign(bridgeUrl.href);
-      return null;
+      return startGoogleBridge("signIn");
+    },
+    async makePermanentWithGoogle() {
+      if (!user?.isAnonymous) {
+        const error = new Error("AUTH_LINK_REQUIRES_ANONYMOUS");
+        error.code = "auth/link-requires-anonymous";
+        throw error;
+      }
+      return startGoogleBridge("link");
     },
     async signInAnonymously() {
       authError = null;

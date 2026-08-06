@@ -48,10 +48,14 @@ Do not switch to blanket public-write rules. Signing in does not grant write
 access unless the matching admin document exists.
 
 Google bridge identities follow the moderator across browsers after Google
-sign-in. Anonymous identities are deliberately device-local: clearing browser
-storage or using another browser profile creates a new UID that must be
-allowlisted separately. The visible Okoun username may be shown as an audit
-hint, but it is never accepted as proof of identity by Firestore.
+sign-in. A moderator who starts with an allowlisted anonymous identity can use
+`Zachovat UID přes Google` before signing out or clearing browser storage. This
+links Google to the existing account without changing its UID, so the existing
+`admins/{uid}` entry keeps working and the identity becomes recoverable.
+Unlinked anonymous identities remain device-local: clearing browser storage or
+using another browser profile creates a new UID that must be allowlisted
+separately. The visible Okoun username may be shown as an audit hint, but it is
+never accepted as proof of identity by Firestore.
 
 ## Stored paths
 

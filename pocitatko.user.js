@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.5.3
+// @version      0.5.4
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.5.3";
+  var VERSION = "0.5.4";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
@@ -5478,9 +5478,18 @@
       throw error;
     });
   }
+  function providerDataAsNames(providerData) {
+    return new Set(providerData.map(({ providerId }) => providerId).filter((pid) => !!pid));
+  }
   async function _link$1(user, credential, bypassAuthState = false) {
     const response = await _logoutIfInvalidated(user, credential._linkToIdToken(user.auth, await user.getIdToken()), bypassAuthState);
     return UserCredentialImpl._forOperation(user, "link", response);
+  }
+  async function _assertLinkedStatus(expected, user, provider) {
+    await _reloadWithoutSaving(user);
+    const providerIds = providerDataAsNames(user.providerData);
+    const code = expected === false ? "provider-already-linked" : "no-such-provider";
+    _assert(providerIds.has(provider) === expected, user.auth, code);
   }
   async function _reauthenticate(user, credential, bypassAuthState = false) {
     const { auth } = user;
@@ -5536,6 +5545,11 @@
   }
   async function signInWithCredential(auth, credential) {
     return _signInWithCredential(_castAuth(auth), credential);
+  }
+  async function linkWithCredential(user, credential) {
+    const userInternal = getModularInstance(user);
+    await _assertLinkedStatus(false, userInternal, credential.providerId);
+    return _link$1(userInternal, credential);
   }
   function onIdTokenChanged(auth, nextOrObserver, error, completed) {
     return getModularInstance(auth).onIdTokenChanged(nextOrObserver, error, completed);
@@ -11376,6 +11390,7 @@
   }
   var AUTH_HASH_KEY = "pocitatko-auth";
   var AUTH_NONCE_KEY = "pocitatko.firebase.authNonce";
+  var AUTH_ACTION_KEY = "pocitatko.firebase.authAction";
   function encodeNonce() {
     if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
     const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -11418,17 +11433,46 @@
         notifyListeners();
       });
     });
+    function startGoogleBridge(action) {
+      authError = null;
+      const nonce = encodeNonce();
+      sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
+      sessionStorage.setItem(AUTH_ACTION_KEY, action);
+      const returnUrl = `${location.origin}${location.pathname}${location.search}`;
+      const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
+      bridgeUrl.searchParams.set("returnUrl", returnUrl);
+      bridgeUrl.searchParams.set("nonce", nonce);
+      location.assign(bridgeUrl.href);
+      return null;
+    }
     if (bridgeCredential) {
       const expectedNonce = sessionStorage.getItem(AUTH_NONCE_KEY);
+      const action = sessionStorage.getItem(AUTH_ACTION_KEY) || "signIn";
       sessionStorage.removeItem(AUTH_NONCE_KEY);
+      sessionStorage.removeItem(AUTH_ACTION_KEY);
       if (bridgeCredential.error || !expectedNonce || bridgeCredential.nonce !== expectedNonce || !bridgeCredential.idToken) {
         authError = new Error(bridgeCredential.error || "AUTH_BRIDGE_INVALID_RESPONSE");
         notifyListeners();
       } else {
-        signInWithCredential(auth, GoogleAuthProvider.credential(bridgeCredential.idToken)).catch((error) => {
-          authError = error;
-          notifyListeners();
-        });
+        void (async () => {
+          try {
+            await ready;
+            const credential = GoogleAuthProvider.credential(bridgeCredential.idToken);
+            if (action === "link") {
+              if (!user?.isAnonymous) {
+                const error = new Error("AUTH_LINK_REQUIRES_ANONYMOUS");
+                error.code = "auth/link-requires-anonymous";
+                throw error;
+              }
+              await linkWithCredential(user, credential);
+            } else {
+              await signInWithCredential(auth, credential);
+            }
+          } catch (error) {
+            authError = error;
+            notifyListeners();
+          }
+        })();
       }
     }
     return {
@@ -11440,15 +11484,15 @@
         return () => listeners.delete(listener);
       },
       async signInWithGoogle() {
-        authError = null;
-        const nonce = encodeNonce();
-        sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
-        const returnUrl = `${location.origin}${location.pathname}${location.search}`;
-        const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
-        bridgeUrl.searchParams.set("returnUrl", returnUrl);
-        bridgeUrl.searchParams.set("nonce", nonce);
-        location.assign(bridgeUrl.href);
-        return null;
+        return startGoogleBridge("signIn");
+      },
+      async makePermanentWithGoogle() {
+        if (!user?.isAnonymous) {
+          const error = new Error("AUTH_LINK_REQUIRES_ANONYMOUS");
+          error.code = "auth/link-requires-anonymous";
+          throw error;
+        }
+        return startGoogleBridge("link");
       },
       async signInAnonymously() {
         authError = null;
@@ -12071,6 +12115,12 @@
       if (error?.code === "auth/operation-not-allowed") {
         return "DB: anonymn\xED p\u0159ihl\xE1\u0161en\xED je\u0161t\u011B nen\xED povolen\xE9 ve Firebase Authentication";
       }
+      if (error?.code === "auth/credential-already-in-use") {
+        return "DB: tento Google \xFA\u010Det u\u017E pat\u0159\xED jin\xE9mu Firebase UID";
+      }
+      if (error?.code === "auth/link-requires-anonymous") {
+        return "DB: anonymn\xED UID u\u017E nen\xED aktivn\xED \u2014 p\u0159ihlaste se p\u0159es Google";
+      }
       if (error?.code === "permission-denied") {
         return "DB: z\xE1pis odm\xEDtnut \u2014 UID je\u0161t\u011B nen\xED v kolekci admins nebo nejsou nasazen\xE1 pravidla";
       }
@@ -12101,6 +12151,20 @@
       try {
         await database.signOut();
         state.databaseMessage = "DB: odhl\xE1\u0161eno";
+      } catch (error) {
+        state.databaseMessage = databaseErrorMessage(error);
+      } finally {
+        state.databaseBusy = false;
+        renderRound();
+      }
+    }
+    async function makeDatabasePermanent() {
+      state.databaseBusy = true;
+      state.databaseMessage = "DB: propojuji UID s Google\u2026";
+      renderRound();
+      try {
+        await database.makePermanentWithGoogle();
+        state.databaseMessage = "DB: pokra\u010Dujte propojen\xEDm na str\xE1nce Google\u2026";
       } catch (error) {
         state.databaseMessage = databaseErrorMessage(error);
       } finally {
@@ -12156,7 +12220,8 @@
       const databaseButtons = !database ? [] : user ? [
         makeButton(state.databaseBusy ? "DB pracuje\u2026" : "Ulo\u017Eit do DB", saveRoundToDatabase),
         makeButton("Kop\xEDrovat UID", () => copyText(user.uid)),
-        makeButton("Odhl\xE1sit DB", signOutDatabase)
+        ...user.isAnonymous ? [makeButton("Zachovat UID p\u0159es Google", makeDatabasePermanent)] : [],
+        makeButton(user.isAnonymous ? "Odhl\xE1sit (UID nep\u016Fjde obnovit)" : "Odhl\xE1sit DB", signOutDatabase)
       ] : [
         makeButton(
           state.databaseBusy ? "DB pracuje\u2026" : "P\u0159ihl\xE1sit p\u0159es Google",
