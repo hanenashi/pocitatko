@@ -1,14 +1,4 @@
-import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  getRedirectResult,
-  GoogleAuthProvider,
-  signInWithRedirect,
-} from "firebase/auth";
-import { firebaseConfig } from "./core/firebase-config.js";
-
-const RETURN_URL_KEY = "pocitatko.authBridge.returnUrl";
-const NONCE_KEY = "pocitatko.authBridge.nonce";
+const GOOGLE_CLIENT_ID = "650129813114-6c8n02m8c1044vsd6cl2unmd1bjaqv44.apps.googleusercontent.com";
 
 function show(message, error = false) {
   const status = document.getElementById("status");
@@ -28,38 +18,55 @@ function encodePayload(value) {
   return btoa(JSON.stringify(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+function loadGoogleIdentity() {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Google přihlášení se nepodařilo načíst."));
+    document.head.append(script);
+  });
+}
+
 async function run() {
   const params = new URLSearchParams(location.search);
-  const incomingReturnUrl = params.get("returnUrl");
-  const incomingNonce = params.get("nonce");
-  if (incomingReturnUrl && incomingNonce) {
-    sessionStorage.setItem(RETURN_URL_KEY, allowedReturnUrl(incomingReturnUrl).href);
-    sessionStorage.setItem(NONCE_KEY, incomingNonce);
-  }
+  const returnUrl = allowedReturnUrl(params.get("returnUrl"));
+  const nonce = params.get("nonce");
+  const action = params.get("action") === "link" ? "link" : "signIn";
+  if (!nonce) throw new Error("Chybí bezpečný návrat do Pociťátka.");
 
-  const savedReturnUrl = sessionStorage.getItem(RETURN_URL_KEY);
-  const nonce = sessionStorage.getItem(NONCE_KEY);
-  if (!savedReturnUrl || !nonce) throw new Error("Chybí bezpečný návrat do Pociťátka.");
+  await loadGoogleIdentity();
+  show(action === "link"
+    ? "Vyberte Google účet, ke kterému chcete trvale připojit toto UID."
+    : "Vyberte Google účet pro přihlášení do Pociťátka.");
 
-  const auth = getAuth(initializeApp(firebaseConfig));
-  show("Dokončuji přihlášení…");
-  const result = await getRedirectResult(auth);
-  if (!result) {
-    show("Otevírám přihlášení Google…");
-    await signInWithRedirect(auth, new GoogleAuthProvider());
-    return;
-  }
-
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  if (!credential?.idToken) throw new Error("Google neposlal přihlašovací token.");
-  sessionStorage.removeItem(RETURN_URL_KEY);
-  sessionStorage.removeItem(NONCE_KEY);
-  const returnUrl = allowedReturnUrl(savedReturnUrl);
-  returnUrl.hash = new URLSearchParams({
-    "pocitatko-auth": encodePayload({ nonce, idToken: credential.idToken }),
-  }).toString();
-  show("Hotovo, vracím se do Pociťátka…");
-  location.replace(returnUrl.href);
+  window.google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    nonce,
+    auto_select: false,
+    callback(response) {
+      try {
+        if (!response?.credential) throw new Error("Google neposlal přihlašovací token.");
+        returnUrl.hash = new URLSearchParams({
+          "pocitatko-auth": encodePayload({ nonce, idToken: response.credential }),
+        }).toString();
+        show("Hotovo, vracím se do Pociťátka…");
+        location.replace(returnUrl.href);
+      } catch (error) {
+        show(error?.message || "Přihlášení se nezdařilo.", true);
+      }
+    },
+  });
+  window.google.accounts.id.renderButton(document.getElementById("google-button"), {
+    type: "standard",
+    theme: "filled_black",
+    size: "large",
+    text: action === "link" ? "continue_with" : "signin_with",
+    shape: "pill",
+    locale: "cs",
+  });
 }
 
 run().catch((error) => show(error?.message || "Přihlášení se nezdařilo.", true));
