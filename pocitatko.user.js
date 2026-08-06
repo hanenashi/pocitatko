@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.1.4
+// @version      0.2.0
 // @description  Read-only visual review helper for Okoun image-caption rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,13 +17,107 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.1.4";
-  const BOARD_PATH = "/boards/vymysli_vtipny_textik";
+  const VERSION = "0.2.0";
+  const DATA_SCHEMA_VERSION = 1;
   const STORAGE_PREFIX = "pocitatko:";
   const SETTINGS = {
     launcherHidden: "launcherHidden",
     launcherPosition: "launcherPosition",
   };
+
+  const CLUB_PLUGINS = [
+    {
+      id: "vymysli_vtipny_textik",
+      name: "Vymysli vtipný textík",
+      boardPath: "/boards/vymysli_vtipny_textik",
+      matchesBoardUrl(url) {
+        return url.origin === location.origin && url.pathname === this.boardPath;
+      },
+      sourcePosts(posts) {
+        return posts.filter((post) => !post.parentId && post.imageUrls.length);
+      },
+      isRoundEnd(post) {
+        return /^vyhr[aá]l\b.*\bgratul/i.test(post.text);
+      },
+      roundEndsAfter(posts, sourceId) {
+        return posts
+          .filter((post) => post.id > sourceId && this.isRoundEnd(post))
+          .sort((a, b) => a.id - b.id);
+      },
+      suggestedEndId(posts, sourceId) {
+        return this.roundEndsAfter(posts, sourceId)[0]?.id || null;
+      },
+      buildRound({ posts, sourceId, endId }) {
+        const source = posts.find((post) => post.id === sourceId) || null;
+        if (!source) return { source: null, end: null, candidates: [], unassigned: [] };
+        const end = posts.find((post) => post.id === endId) || null;
+        const beforeEnd = (post) => !end || post.id < end.id;
+        const candidates = posts
+          .filter(
+            (post) =>
+              post.id > source.id && beforeEnd(post) && !post.parentId && post.imageUrls.length,
+          )
+          .map((candidate) => ({
+            ...candidate,
+            reactions: posts
+              .filter(
+                (post) =>
+                  post.id > candidate.id &&
+                  beforeEnd(post) &&
+                  post.parentId === candidate.id &&
+                  !this.isRoundEnd(post),
+              )
+              .sort((a, b) => a.id - b.id),
+          }))
+          .sort((a, b) => a.id - b.id);
+        const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+        const unassigned = posts.filter(
+          (post) =>
+            post.id > source.id &&
+            beforeEnd(post) &&
+            post.parentId &&
+            !candidateIds.has(post.parentId),
+        );
+        return { source, end, candidates, unassigned };
+      },
+      scoreCandidate(candidate, { excludedReactionIds }) {
+        const includedReactions = candidate.reactions.filter(
+          (reaction) => !excludedReactionIds.has(reaction.id),
+        );
+        const reactingAuthors = new Set(includedReactions.map((reaction) => reaction.author));
+        return {
+          uniqueReactors: reactingAuthors.size,
+          reactionPosts: includedReactions.length,
+          excludedPosts: candidate.reactions.length - includedReactions.length,
+          points: reactingAuthors.size,
+        };
+      },
+      rankCandidates(round, context) {
+        return round.candidates
+          .map((candidate) => ({ candidate, stats: this.scoreCandidate(candidate, context) }))
+          .sort(
+            (a, b) =>
+              b.stats.points - a.stats.points ||
+              b.stats.uniqueReactors - a.stats.uniqueReactors ||
+              a.candidate.id - b.candidate.id,
+          );
+      },
+      formatResult(winner) {
+        return `Vyhrál/a ${winner.author}. Gratulace!`;
+      },
+      sourceExplanation:
+        "Klikni na zdrojový obrázek. Po potvrzení se všechny pozdější samostatné obrázkové příspěvky vezmou jako soutěžní návrhy a jejich vláknové odpovědi jako reakce.",
+    },
+  ];
+
+  const activePlugin = CLUB_PLUGINS.find((plugin) => {
+    try {
+      return plugin.matchesBoardUrl(new URL(location.href));
+    } catch {
+      return false;
+    }
+  });
+  if (!activePlugin) return;
   const IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -44,6 +138,7 @@
     detachViewport: null,
     detachLauncherViewport: null,
     ignoreLauncherClickUntil: 0,
+    roundSnapshot: null,
   };
 
   const clamp = (value, minimum, maximum) =>
@@ -102,7 +197,7 @@
   function safeBoardUrl(value) {
     try {
       const url = new URL(value, location.href);
-      return url.origin === location.origin && url.pathname === BOARD_PATH ? url.href : "";
+      return activePlugin.matchesBoardUrl(url) ? url.href : "";
     } catch {
       return "";
     }
@@ -123,13 +218,16 @@
       const parentLink = item.querySelector(".actions a.prev");
       const permalink = item.querySelector(".meta a.date.link");
       const id = postIdFrom(item.id);
+      const author = textOf(item.querySelector(".meta .user")) || "neznámý uživatel";
       const imageUrls = Array.from(content.querySelectorAll("img"))
         .map((image) => safeImageUrl(image.getAttribute("src") || image.src, pageUrl))
         .filter(Boolean);
 
       return {
         id,
-        author: textOf(item.querySelector(".meta .user")) || "neznámý uživatel",
+        author,
+        authorKey: author.toLowerCase(),
+        avatarUrl: safeImageUrl(item.querySelector(".ico.user img")?.src, pageUrl),
         timestamp: textOf(permalink),
         parentId: postIdFrom(parentLink?.getAttribute("href")),
         parentLabel: textOf(parentLink),
@@ -137,7 +235,7 @@
         imageUrls,
         url:
           safeBoardUrl(absoluteUrl(permalink?.getAttribute("href"), pageUrl)) ||
-          `${location.origin}${BOARD_PATH}#article-${id}`,
+          `${location.origin}${activePlugin.boardPath}#article-${id}`,
         pageUrl,
       };
     }).filter((post) => post.id);
@@ -189,82 +287,68 @@
   }
 
   function imagePosts() {
-    return state.posts.filter((post) => !post.parentId && post.imageUrls.length);
-  }
-
-  function isWinnerAnnouncement(post) {
-    return /^vyhr[aá]l\b.*\bgratul/i.test(post.text);
+    return activePlugin.sourcePosts(state.posts);
   }
 
   function winnerAnnouncementsAfter(sourceId) {
-    return state.posts
-      .filter((post) => post.id > sourceId && isWinnerAnnouncement(post))
-      .sort((a, b) => a.id - b.id);
+    return activePlugin.roundEndsAfter(state.posts, sourceId);
   }
 
   function suggestedEndId(sourceId) {
-    return winnerAnnouncementsAfter(sourceId)[0]?.id || null;
+    return activePlugin.suggestedEndId(state.posts, sourceId);
   }
 
   function buildRound(sourceId = state.sourceId) {
-    const source = state.posts.find((post) => post.id === sourceId) || null;
-    if (!source) return { source: null, end: null, candidates: [], unassigned: [] };
-    const end = state.posts.find((post) => post.id === state.endId) || null;
-    const beforeEnd = (post) => !end || post.id < end.id;
-
-    const candidates = state.posts
-      .filter(
-        (post) =>
-          post.id > source.id && beforeEnd(post) && !post.parentId && post.imageUrls.length,
-      )
-      .map((candidate) => ({
-        ...candidate,
-        reactions: state.posts
-          .filter(
-            (post) =>
-              post.id > candidate.id &&
-              beforeEnd(post) &&
-              post.parentId === candidate.id &&
-              !isWinnerAnnouncement(post),
-          )
-          .sort((a, b) => a.id - b.id),
-      }))
-      .sort((a, b) => a.id - b.id);
-
-    const candidateIds = new Set(candidates.map((candidate) => candidate.id));
-    const unassigned = state.posts.filter(
-      (post) =>
-        post.id > source.id &&
-        beforeEnd(post) &&
-        post.parentId &&
-        !candidateIds.has(post.parentId),
-    );
-
-    return { source, end, candidates, unassigned };
-  }
-
-  function candidateStats(candidate) {
-    const includedReactions = candidate.reactions.filter(
-      (reaction) => !state.excludedReactionIds.has(reaction.id),
-    );
-    const reactingAuthors = new Set(includedReactions.map((reaction) => reaction.author));
-    return {
-      uniqueReactors: reactingAuthors.size,
-      reactionPosts: includedReactions.length,
-      excludedPosts: candidate.reactions.length - includedReactions.length,
-      points: reactingAuthors.size,
-    };
+    return activePlugin.buildRound({
+      posts: state.posts,
+      sourceId,
+      endId: state.endId,
+    });
   }
 
   function rankedCandidates(round) {
-    return round.candidates
-      .map((candidate) => ({ candidate, stats: candidateStats(candidate) }))
-      .sort(
-        (a, b) =>
-          b.stats.points - a.stats.points ||
-          b.stats.uniqueReactors - a.stats.uniqueReactors ||
-          a.candidate.id - b.candidate.id,
-      );
+    return activePlugin.rankCandidates(round, {
+      excludedReactionIds: state.excludedReactionIds,
+    });
+  }
+
+  function snapshotPost(post) {
+    if (!post) return null;
+    return {
+      postId: post.id,
+      author: post.author,
+      authorKey: post.authorKey,
+      avatarUrl: post.avatarUrl,
+      timestamp: post.timestamp,
+      text: post.text,
+      imageUrls: [...post.imageUrls],
+      url: post.url,
+    };
+  }
+
+  function createRoundSnapshot(round, ranked, selectedWinner) {
+    const suggestedWinner = ranked[0]?.candidate || null;
+    return {
+      schemaVersion: DATA_SCHEMA_VERSION,
+      clubId: activePlugin.id,
+      roundId: `${activePlugin.id}:${round.source.id}`,
+      source: snapshotPost(round.source),
+      end: snapshotPost(round.end),
+      entries: ranked.map(({ candidate, stats }) => ({
+        ...snapshotPost(candidate),
+        stats: { ...stats },
+        reactions: candidate.reactions.map((reaction) => ({
+          ...snapshotPost(reaction),
+          included: !state.excludedReactionIds.has(reaction.id),
+        })),
+      })),
+      unassignedPostIds: round.unassigned.map((post) => post.id),
+      result: {
+        suggestedWinnerPostId: suggestedWinner?.id || null,
+        selectedWinnerPostId: selectedWinner?.id || null,
+        selection: state.manualWinnerId ? "manual" : "suggested",
+      },
+    };
   }
 
   function addStyles() {
@@ -398,7 +482,7 @@
     if (!header) return;
     header.replaceChildren();
     const title = document.createElement("h2");
-    title.textContent = `Pociťátko v${VERSION}`;
+    title.textContent = `Pociťátko · ${activePlugin.name} · v${VERSION}`;
     const meta = document.createElement("span");
     meta.textContent = status;
     header.append(title, meta, ...buttons);
@@ -410,6 +494,7 @@
     state.endManuallyChanged = false;
     state.manualWinnerId = null;
     state.excludedReactionIds = new Set();
+    state.roundSnapshot = null;
     renderSourceChooser();
   }
 
@@ -462,8 +547,7 @@
     const heading = document.createElement("strong");
     heading.textContent = "1. Vyber původní obrázek kola";
     const explanation = document.createElement("p");
-    explanation.textContent =
-      "Klikni na zdrojový obrázek. Po potvrzení se všechny pozdější samostatné obrázkové příspěvky vezmou jako soutěžní návrhy a jejich vláknové odpovědi jako reakce.";
+    explanation.textContent = activePlugin.sourceExplanation;
     intro.append(heading, explanation);
     body.append(intro);
 
@@ -537,6 +621,7 @@
     const selectedWinner =
       round.candidates.find((candidate) => candidate.id === state.manualWinnerId) ||
       suggestedWinner;
+    state.roundSnapshot = createRoundSnapshot(round, ranked, selectedWinner);
     const includedReactionCount = ranked.reduce(
       (sum, entry) => sum + entry.stats.reactionPosts,
       0,
@@ -558,7 +643,7 @@
         : []),
       makeButton(
         "Kopírovat výsledek",
-        () => selectedWinner && copyText(`Vyhrál/a ${selectedWinner.author}. Gratulace!`),
+        () => selectedWinner && copyText(activePlugin.formatResult(selectedWinner)),
         "primary",
       ),
       makeButton("Zavřít", closeOverlay),
@@ -708,6 +793,7 @@
     state.olderUrl = "";
     state.loadedUrls = new Set();
     state.error = "";
+    state.roundSnapshot = null;
 
     const overlay = document.createElement("div");
     overlay.id = IDS.overlay;

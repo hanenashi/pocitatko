@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.1.4**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.2.0**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -14,6 +14,25 @@ discussion, and votes for one another.
 
 Pociťátko aims to make the evidence easy to inspect without taking the human
 decision away from the moderator.
+
+## Club plugins
+
+Pociťátko has a shared Okoun core and separate rule plugins for individual
+clubs. The core owns page loading, normalized posts, the review overlay,
+manual corrections, settings, and safety. A plugin decides how its club finds
+round boundaries and entries, counts points, selects a suggested winner, and
+formats copied results.
+
+The first plugin preserves the existing `vymysli_vtipny_textik` workflow. New
+clubs can use different rules without adding club-specific guesses to the
+shared core. Plugins are bundled into the same installable userscript for now.
+
+Reviewed rounds are also normalized behind a versioned data boundary using a
+stable club ID, source-post-based round ID, post IDs, entries, reactions,
+tallies, exclusions, winner selection, author keys, and avatar URLs. This data
+remains local today; a future opt-in storage adapter can send it to Firestore
+for historical results and live club statistics without coupling the database
+to parsing rules.
 
 ## How
 
