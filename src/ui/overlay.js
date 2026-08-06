@@ -274,21 +274,32 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
       return "DB: doména www.okoun.cz není povolená ve Firebase Authentication";
     }
     if (error?.code === "auth/popup-closed-by-user") return "DB: přihlášení zrušeno";
+    if (error?.code === "auth/operation-not-allowed") {
+      return "DB: anonymní přihlášení ještě není povolené ve Firebase Authentication";
+    }
     if (error?.code === "permission-denied") {
       return "DB: zápis odmítnut — UID ještě není v kolekci admins nebo nejsou nasazená pravidla";
     }
     return `DB: ${error?.message || "neznámá chyba"}`;
   }
 
-  async function signInDatabase() {
+  function databaseUserMessage(user) {
+    if (!user) return "DB: nepřihlášeno — nic se neodesílá";
+    if (user.isAnonymous) return `DB: UID tohoto prohlížeče ${user.uid}`;
+    return `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`;
+  }
+
+  async function signInDatabase(method) {
     state.databaseBusy = true;
     state.databaseMessage = "DB: přihlašování…";
-    const request = database.signIn();
+    const request = method === "anonymous"
+      ? database.signInAnonymously()
+      : database.signInWithGoogle();
     renderRound();
     try {
       const user = await request;
       state.databaseMessage = user
-        ? `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`
+        ? databaseUserMessage(user)
         : "DB: pokračujte přihlášením na stránce Google…";
     } catch (error) {
       state.databaseMessage = databaseErrorMessage(error);
@@ -365,9 +376,19 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
       : user
         ? [
             makeButton(state.databaseBusy ? "DB pracuje…" : "Uložit do DB", saveRoundToDatabase),
+            makeButton("Kopírovat UID", () => copyText(user.uid)),
             makeButton("Odhlásit DB", signOutDatabase),
           ]
-        : [makeButton(state.databaseBusy ? "DB pracuje…" : "Přihlásit k DB", signInDatabase)];
+        : [
+            makeButton(
+              state.databaseBusy ? "DB pracuje…" : "Přihlásit přes Google",
+              () => signInDatabase("google"),
+            ),
+            makeButton(
+              "Použít UID tohoto prohlížeče",
+              () => signInDatabase("anonymous"),
+            ),
+          ];
     databaseButtons.forEach((button) => { button.disabled = state.databaseBusy; });
     const buttons = [
       makeButton("Změnit hranice", renderSourceChooser),
@@ -405,9 +426,7 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
       databaseStatus.dataset.pocitatkoMuted = "";
       databaseStatus.textContent = state.databaseMessage || (database.authError?.()
         ? databaseErrorMessage(database.authError())
-        : user
-        ? `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`
-        : "DB: nepřihlášeno — nic se neodesílá");
+        : databaseUserMessage(user));
       prompt.append(databaseStatus);
     }
     if (round.unassigned.length) {

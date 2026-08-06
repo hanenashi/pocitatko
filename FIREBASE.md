@@ -11,6 +11,8 @@ As of 6 August 2026, project `pocitatko-7541f` has:
 - the default Firestore database and API active;
 - the repository's emulator-tested `firestore.rules` deployed;
 - Google Authentication active;
+- code support for an optional anonymous per-browser identity (enable the
+  Anonymous provider before use);
 - `www.okoun.cz` present in Authentication's authorized domains; and
 - a first-party mobile authentication bridge under Firebase Hosting; and
 - public round reads reachable while anonymous writes remain denied;
@@ -24,16 +26,18 @@ SDK private key is required.
 ## Console setup
 
 1. Create the default Cloud Firestore database in production mode.
-2. Under Authentication, enable the Google sign-in provider.
+2. Under Authentication, enable the Google and Anonymous sign-in providers.
 3. Add `www.okoun.cz` to Authentication's authorized domains.
 4. Deploy the repository's `firestore.rules` in Firestore's Rules tab.
 5. Deploy Firebase Hosting from this repository so `/auth/` can complete
    mobile sign-in without relying on blocked third-party browser storage.
-6. Open a reviewed round in Pociťátko and press `Přihlásit k DB`.
+6. Open a reviewed round in Pociťátko and either sign in through the Google
+   bridge or request a UID for the current browser profile.
 7. Copy the UID displayed in the round's DB status.
 8. In Firestore, create collection `admins` and a document whose document ID is
-   that UID. A simple field such as `enabled: true` is sufficient; the rules
-   use document existence as the allowlist.
+   that UID. A simple field such as `enabled: true` is sufficient; optional
+   fields such as `okounUser` and `role` are descriptive only. The rules use
+   document existence as the allowlist.
 9. Press `Uložit do DB`. The first successful save creates the club and round
    documents.
 
@@ -42,6 +46,12 @@ read back anonymously to verify the public historical-results path.
 
 Do not switch to blanket public-write rules. Signing in does not grant write
 access unless the matching admin document exists.
+
+Google bridge identities follow the moderator across browsers after Google
+sign-in. Anonymous identities are deliberately device-local: clearing browser
+storage or using another browser profile creates a new UID that must be
+allowlisted separately. The visible Okoun username may be shown as an audit
+hint, but it is never accepted as proof of identity by Firestore.
 
 ## Stored paths
 

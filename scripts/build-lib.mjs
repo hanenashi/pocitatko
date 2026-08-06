@@ -41,7 +41,11 @@ async function bundledOutput(entryPoint) {
     define: await firebaseDefines(),
     write: false,
   });
-  return result.outputFiles[0].text;
+  // Keep esbuild's generated source comments stable across npm and pnpm installs.
+  return result.outputFiles[0].text.replace(
+    /node_modules\/\.pnpm\/[^/\n]+\/node_modules\//g,
+    "node_modules/",
+  );
 }
 
 export async function buildUserscript({ write = true } = {}) {

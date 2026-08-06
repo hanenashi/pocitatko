@@ -3,8 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInAnonymously as firebaseSignInAnonymously,
   signInWithCredential,
-  signInWithPopup,
   signOut,
 } from "firebase/auth";
 import { doc, getFirestore, serverTimestamp, writeBatch } from "firebase/firestore/lite";
@@ -12,14 +12,13 @@ import { firebaseConfig } from "../core/firebase-config.js";
 
 function publicUser(user) {
   return user
-    ? { uid: user.uid, email: user.email || "", displayName: user.displayName || "" }
+    ? {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "",
+        isAnonymous: user.isAnonymous,
+      }
     : null;
-}
-
-function prefersRedirectSignIn() {
-  const touchFirst = navigator.maxTouchPoints > 0 &&
-    !window.matchMedia("(hover: hover)").matches;
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || touchFirst;
 }
 
 const AUTH_HASH_KEY = "pocitatko-auth";
@@ -94,20 +93,20 @@ export function createFirestoreAdapter() {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    async signIn() {
+    async signInWithGoogle() {
       authError = null;
-      const provider = new GoogleAuthProvider();
-      if (prefersRedirectSignIn()) {
-        const nonce = encodeNonce();
-        sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
-        const returnUrl = `${location.origin}${location.pathname}${location.search}`;
-        const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
-        bridgeUrl.searchParams.set("returnUrl", returnUrl);
-        bridgeUrl.searchParams.set("nonce", nonce);
-        location.assign(bridgeUrl.href);
-        return null;
-      }
-      const result = await signInWithPopup(auth, provider);
+      const nonce = encodeNonce();
+      sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
+      const returnUrl = `${location.origin}${location.pathname}${location.search}`;
+      const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
+      bridgeUrl.searchParams.set("returnUrl", returnUrl);
+      bridgeUrl.searchParams.set("nonce", nonce);
+      location.assign(bridgeUrl.href);
+      return null;
+    },
+    async signInAnonymously() {
+      authError = null;
+      const result = await firebaseSignInAnonymously(auth);
       return publicUser(result.user);
     },
     async signOut() {
