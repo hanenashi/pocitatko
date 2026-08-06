@@ -82,6 +82,7 @@ export function createFirestoreAdapter() {
     const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
     bridgeUrl.searchParams.set("returnUrl", returnUrl);
     bridgeUrl.searchParams.set("nonce", nonce);
+    bridgeUrl.searchParams.set("action", action);
     location.assign(bridgeUrl.href);
     return null;
   }
@@ -93,6 +94,7 @@ export function createFirestoreAdapter() {
     sessionStorage.removeItem(AUTH_ACTION_KEY);
     if (bridgeCredential.error || !expectedNonce || bridgeCredential.nonce !== expectedNonce || !bridgeCredential.idToken) {
       authError = new Error(bridgeCredential.error || "AUTH_BRIDGE_INVALID_RESPONSE");
+      if (bridgeCredential.error?.startsWith("auth/")) authError.code = bridgeCredential.error;
       notifyListeners();
     } else {
       void (async () => {

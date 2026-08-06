@@ -5444,11 +5444,91 @@
     }
     return userCredential;
   }
+  function _fromIdTokenResponse(idTokenResponse) {
+    if (!idTokenResponse) {
+      return null;
+    }
+    const { providerId } = idTokenResponse;
+    const profile = idTokenResponse.rawUserInfo ? JSON.parse(idTokenResponse.rawUserInfo) : {};
+    const isNewUser = idTokenResponse.isNewUser || idTokenResponse.kind === "identitytoolkit#SignupNewUserResponse";
+    if (!providerId && idTokenResponse?.idToken) {
+      const signInProvider = _parseToken(idTokenResponse.idToken)?.firebase?.["sign_in_provider"];
+      if (signInProvider) {
+        const filteredProviderId = signInProvider !== "anonymous" && signInProvider !== "custom" ? signInProvider : null;
+        return new GenericAdditionalUserInfo(isNewUser, filteredProviderId);
+      }
+    }
+    if (!providerId) {
+      return null;
+    }
+    switch (providerId) {
+      case "facebook.com":
+        return new FacebookAdditionalUserInfo(isNewUser, profile);
+      case "github.com":
+        return new GithubAdditionalUserInfo(isNewUser, profile);
+      case "google.com":
+        return new GoogleAdditionalUserInfo(isNewUser, profile);
+      case "twitter.com":
+        return new TwitterAdditionalUserInfo(isNewUser, profile, idTokenResponse.screenName || null);
+      case "custom":
+      case "anonymous":
+        return new GenericAdditionalUserInfo(isNewUser, null);
+      default:
+        return new GenericAdditionalUserInfo(isNewUser, providerId, profile);
+    }
+  }
+  var GenericAdditionalUserInfo = class {
+    constructor(isNewUser, providerId, profile = {}) {
+      this.isNewUser = isNewUser;
+      this.providerId = providerId;
+      this.profile = profile;
+    }
+  };
+  var FederatedAdditionalUserInfoWithUsername = class extends GenericAdditionalUserInfo {
+    constructor(isNewUser, providerId, profile, username) {
+      super(isNewUser, providerId, profile);
+      this.username = username;
+    }
+  };
+  var FacebookAdditionalUserInfo = class extends GenericAdditionalUserInfo {
+    constructor(isNewUser, profile) {
+      super(isNewUser, "facebook.com", profile);
+    }
+  };
+  var GithubAdditionalUserInfo = class extends FederatedAdditionalUserInfoWithUsername {
+    constructor(isNewUser, profile) {
+      super(isNewUser, "github.com", profile, typeof profile?.login === "string" ? profile?.login : null);
+    }
+  };
+  var GoogleAdditionalUserInfo = class extends GenericAdditionalUserInfo {
+    constructor(isNewUser, profile) {
+      super(isNewUser, "google.com", profile);
+    }
+  };
+  var TwitterAdditionalUserInfo = class extends FederatedAdditionalUserInfoWithUsername {
+    constructor(isNewUser, profile, screenName) {
+      super(isNewUser, "twitter.com", profile, screenName);
+    }
+  };
+  function getAdditionalUserInfo(userCredential) {
+    const { user, _tokenResponse } = userCredential;
+    if (user.isAnonymous && !_tokenResponse) {
+      return {
+        providerId: null,
+        isNewUser: false,
+        profile: null
+      };
+    }
+    return _fromIdTokenResponse(_tokenResponse);
+  }
   function onIdTokenChanged(auth, nextOrObserver, error, completed) {
     return getModularInstance(auth).onIdTokenChanged(nextOrObserver, error, completed);
   }
   function beforeAuthStateChanged(auth, callback, onAbort) {
     return getModularInstance(auth).beforeAuthStateChanged(callback, onAbort);
+  }
+  async function deleteUser(user) {
+    return getModularInstance(user).delete();
   }
   function startEnrollPhoneMfa(auth, request) {
     return _performApiRequest(auth, "POST", "/v2/accounts/mfaEnrollment:start", _addTidIfNecessary(auth, request));
@@ -7905,6 +7985,7 @@
   // src/auth-bridge.js
   var RETURN_URL_KEY = "pocitatko.authBridge.returnUrl";
   var NONCE_KEY = "pocitatko.authBridge.nonce";
+  var ACTION_KEY = "pocitatko.authBridge.action";
   function show(message, error = false) {
     const status = document.getElementById("status");
     status.textContent = message;
@@ -7924,12 +8005,15 @@
     const params = new URLSearchParams(location.search);
     const incomingReturnUrl = params.get("returnUrl");
     const incomingNonce = params.get("nonce");
+    const incomingAction = params.get("action") || "signIn";
     if (incomingReturnUrl && incomingNonce) {
       sessionStorage.setItem(RETURN_URL_KEY, allowedReturnUrl(incomingReturnUrl).href);
       sessionStorage.setItem(NONCE_KEY, incomingNonce);
+      sessionStorage.setItem(ACTION_KEY, incomingAction === "link" ? "link" : "signIn");
     }
     const savedReturnUrl = sessionStorage.getItem(RETURN_URL_KEY);
     const nonce = sessionStorage.getItem(NONCE_KEY);
+    const action = sessionStorage.getItem(ACTION_KEY) || "signIn";
     if (!savedReturnUrl || !nonce) throw new Error("Chyb\xED bezpe\u010Dn\xFD n\xE1vrat do Poci\u0165\xE1tka.");
     const auth = getAuth(initializeApp(firebaseConfig));
     show("Dokon\u010Duji p\u0159ihl\xE1\u0161en\xED\u2026");
@@ -7941,11 +8025,20 @@
     }
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.idToken) throw new Error("Google neposlal p\u0159ihla\u0161ovac\xED token.");
+    let error = "";
+    if (action === "link") {
+      if (getAdditionalUserInfo(result)?.isNewUser) {
+        await deleteUser(result.user);
+      } else {
+        error = "auth/credential-already-in-use";
+      }
+    }
     sessionStorage.removeItem(RETURN_URL_KEY);
     sessionStorage.removeItem(NONCE_KEY);
+    sessionStorage.removeItem(ACTION_KEY);
     const returnUrl = allowedReturnUrl(savedReturnUrl);
     returnUrl.hash = new URLSearchParams({
-      "pocitatko-auth": encodePayload({ nonce, idToken: credential.idToken })
+      "pocitatko-auth": encodePayload(error ? { nonce, error } : { nonce, idToken: credential.idToken })
     }).toString();
     show("Hotovo, vrac\xEDm se do Poci\u0165\xE1tka\u2026");
     location.replace(returnUrl.href);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.5.4
+// @version      0.5.5
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.5.4";
+  var VERSION = "0.5.5";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
@@ -11442,6 +11442,7 @@
       const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
       bridgeUrl.searchParams.set("returnUrl", returnUrl);
       bridgeUrl.searchParams.set("nonce", nonce);
+      bridgeUrl.searchParams.set("action", action);
       location.assign(bridgeUrl.href);
       return null;
     }
@@ -11452,6 +11453,7 @@
       sessionStorage.removeItem(AUTH_ACTION_KEY);
       if (bridgeCredential.error || !expectedNonce || bridgeCredential.nonce !== expectedNonce || !bridgeCredential.idToken) {
         authError = new Error(bridgeCredential.error || "AUTH_BRIDGE_INVALID_RESPONSE");
+        if (bridgeCredential.error?.startsWith("auth/")) authError.code = bridgeCredential.error;
         notifyListeners();
       } else {
         void (async () => {
