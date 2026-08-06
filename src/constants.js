@@ -1,4 +1,4 @@
-export const VERSION = "0.5.2";
+export const VERSION = "0.5.3";
 export const DATA_SCHEMA_VERSION = 1;
 export const IDS = {
   launcher: "pocitatko-launcher",

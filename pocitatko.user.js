@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.5.2
+// @version      0.5.3
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.5.2";
+  var VERSION = "0.5.3";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
@@ -1983,19 +1983,6 @@
   }
   function _serverAppCurrentUserOperationNotSupportedError(auth) {
     return _errorWithCustomMessage(auth, "operation-not-supported-in-this-environment", "Operations that alter the current user are not supported in conjunction with FirebaseServerApp");
-  }
-  function _assertInstanceOf(auth, object, instance) {
-    const constructorInstance = instance;
-    if (!(object instanceof constructorInstance)) {
-      if (constructorInstance.name !== object.constructor.name) {
-        _fail(
-          auth,
-          "argument-error"
-          /* AuthErrorCode.ARGUMENT_ERROR */
-        );
-      }
-      throw _errorWithCustomMessage(auth, "argument-error", `Type of ${object.constructor.name} does not match expected instance.Did you pass a reference from a different Auth SDK?`);
-    }
   }
   function createErrorInternal(authOrCode, ...rest) {
     if (typeof authOrCode !== "string") {
@@ -5399,6 +5386,9 @@
   };
   TwitterAuthProvider.TWITTER_SIGN_IN_METHOD = "twitter.com";
   TwitterAuthProvider.PROVIDER_ID = "twitter.com";
+  async function signUp(auth, request) {
+    return _performSignInRequest(auth, "POST", "/v1/accounts:signUp", _addTidIfNecessary(auth, request));
+  }
   var UserCredentialImpl = class _UserCredentialImpl {
     constructor(params) {
       this.user = params.user;
@@ -5440,6 +5430,27 @@
       return "phone";
     }
     return null;
+  }
+  async function signInAnonymously(auth) {
+    if (_isFirebaseServerApp(auth.app)) {
+      return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(auth));
+    }
+    const authInternal = _castAuth(auth);
+    await authInternal._initializationPromise;
+    if (authInternal.currentUser?.isAnonymous) {
+      return new UserCredentialImpl({
+        user: authInternal.currentUser,
+        providerId: null,
+        operationType: "signIn"
+        /* OperationType.SIGN_IN */
+      });
+    }
+    const response = await signUp(authInternal, {
+      returnSecureToken: true
+    });
+    const userCredential = await UserCredentialImpl._fromIdTokenResponse(authInternal, "signIn", response, true);
+    await authInternal._updateCurrentUser(userCredential.user);
+    return userCredential;
   }
   var MultiFactorError = class _MultiFactorError extends FirebaseError {
     constructor(auth, error, operationType, user) {
@@ -6873,20 +6884,6 @@
     }
   };
   var _POLL_WINDOW_CLOSE_TIMEOUT = new Delay(2e3, 1e4);
-  async function signInWithPopup(auth, provider, resolver) {
-    if (_isFirebaseServerApp(auth.app)) {
-      return Promise.reject(_createError(
-        auth,
-        "operation-not-supported-in-this-environment"
-        /* AuthErrorCode.OPERATION_NOT_SUPPORTED */
-      ));
-    }
-    const authInternal = _castAuth(auth);
-    _assertInstanceOf(auth, provider, FederatedAuthProvider);
-    const resolverInternal = _withDefaultResolver(authInternal, resolver);
-    const action = new PopupOperation(authInternal, "signInViaPopup", provider, resolverInternal);
-    return action.executeNotNull();
-  }
   var PopupOperation = class _PopupOperation extends AbstractPopupRedirectOperation {
     constructor(auth, filter, provider, resolver, user) {
       super(auth, filter, resolver, user);
@@ -11370,11 +11367,12 @@
 
   // src/adapters/firestore.js
   function publicUser(user) {
-    return user ? { uid: user.uid, email: user.email || "", displayName: user.displayName || "" } : null;
-  }
-  function prefersRedirectSignIn() {
-    const touchFirst = navigator.maxTouchPoints > 0 && !window.matchMedia("(hover: hover)").matches;
-    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || touchFirst;
+    return user ? {
+      uid: user.uid,
+      email: user.email || "",
+      displayName: user.displayName || "",
+      isAnonymous: user.isAnonymous
+    } : null;
   }
   var AUTH_HASH_KEY = "pocitatko-auth";
   var AUTH_NONCE_KEY = "pocitatko.firebase.authNonce";
@@ -11441,20 +11439,20 @@
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
-      async signIn() {
+      async signInWithGoogle() {
         authError = null;
-        const provider = new GoogleAuthProvider();
-        if (prefersRedirectSignIn()) {
-          const nonce = encodeNonce();
-          sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
-          const returnUrl = `${location.origin}${location.pathname}${location.search}`;
-          const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
-          bridgeUrl.searchParams.set("returnUrl", returnUrl);
-          bridgeUrl.searchParams.set("nonce", nonce);
-          location.assign(bridgeUrl.href);
-          return null;
-        }
-        const result = await signInWithPopup(auth, provider);
+        const nonce = encodeNonce();
+        sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
+        const returnUrl = `${location.origin}${location.pathname}${location.search}`;
+        const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
+        bridgeUrl.searchParams.set("returnUrl", returnUrl);
+        bridgeUrl.searchParams.set("nonce", nonce);
+        location.assign(bridgeUrl.href);
+        return null;
+      },
+      async signInAnonymously() {
+        authError = null;
+        const result = await signInAnonymously(auth);
         return publicUser(result.user);
       },
       async signOut() {
@@ -12070,19 +12068,27 @@
         return "DB: dom\xE9na www.okoun.cz nen\xED povolen\xE1 ve Firebase Authentication";
       }
       if (error?.code === "auth/popup-closed-by-user") return "DB: p\u0159ihl\xE1\u0161en\xED zru\u0161eno";
+      if (error?.code === "auth/operation-not-allowed") {
+        return "DB: anonymn\xED p\u0159ihl\xE1\u0161en\xED je\u0161t\u011B nen\xED povolen\xE9 ve Firebase Authentication";
+      }
       if (error?.code === "permission-denied") {
         return "DB: z\xE1pis odm\xEDtnut \u2014 UID je\u0161t\u011B nen\xED v kolekci admins nebo nejsou nasazen\xE1 pravidla";
       }
       return `DB: ${error?.message || "nezn\xE1m\xE1 chyba"}`;
     }
-    async function signInDatabase() {
+    function databaseUserMessage(user) {
+      if (!user) return "DB: nep\u0159ihl\xE1\u0161eno \u2014 nic se neodes\xEDl\xE1";
+      if (user.isAnonymous) return `DB: UID tohoto prohl\xED\u017Ee\u010De ${user.uid}`;
+      return `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}`;
+    }
+    async function signInDatabase(method) {
       state.databaseBusy = true;
       state.databaseMessage = "DB: p\u0159ihla\u0161ov\xE1n\xED\u2026";
-      const request = database.signIn();
+      const request = method === "anonymous" ? database.signInAnonymously() : database.signInWithGoogle();
       renderRound();
       try {
         const user = await request;
-        state.databaseMessage = user ? `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}` : "DB: pokra\u010Dujte p\u0159ihl\xE1\u0161en\xEDm na str\xE1nce Google\u2026";
+        state.databaseMessage = user ? databaseUserMessage(user) : "DB: pokra\u010Dujte p\u0159ihl\xE1\u0161en\xEDm na str\xE1nce Google\u2026";
       } catch (error) {
         state.databaseMessage = databaseErrorMessage(error);
       } finally {
@@ -12149,8 +12155,18 @@
       const user = database?.currentUser();
       const databaseButtons = !database ? [] : user ? [
         makeButton(state.databaseBusy ? "DB pracuje\u2026" : "Ulo\u017Eit do DB", saveRoundToDatabase),
+        makeButton("Kop\xEDrovat UID", () => copyText(user.uid)),
         makeButton("Odhl\xE1sit DB", signOutDatabase)
-      ] : [makeButton(state.databaseBusy ? "DB pracuje\u2026" : "P\u0159ihl\xE1sit k DB", signInDatabase)];
+      ] : [
+        makeButton(
+          state.databaseBusy ? "DB pracuje\u2026" : "P\u0159ihl\xE1sit p\u0159es Google",
+          () => signInDatabase("google")
+        ),
+        makeButton(
+          "Pou\u017E\xEDt UID tohoto prohl\xED\u017Ee\u010De",
+          () => signInDatabase("anonymous")
+        )
+      ];
       databaseButtons.forEach((button) => {
         button.disabled = state.databaseBusy;
       });
@@ -12186,7 +12202,7 @@
       if (database) {
         const databaseStatus = document.createElement("p");
         databaseStatus.dataset.pocitatkoMuted = "";
-        databaseStatus.textContent = state.databaseMessage || (database.authError?.() ? databaseErrorMessage(database.authError()) : user ? `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}` : "DB: nep\u0159ihl\xE1\u0161eno \u2014 nic se neodes\xEDl\xE1");
+        databaseStatus.textContent = state.databaseMessage || (database.authError?.() ? databaseErrorMessage(database.authError()) : databaseUserMessage(user));
         prompt.append(databaseStatus);
       }
       if (round.unassigned.length) {
