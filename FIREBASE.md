@@ -12,6 +12,7 @@ As of 6 August 2026, project `pocitatko-7541f` has:
 - the repository's emulator-tested `firestore.rules` deployed;
 - Google Authentication active;
 - `www.okoun.cz` present in Authentication's authorized domains; and
+- a first-party mobile authentication bridge under Firebase Hosting; and
 - public round reads reachable while anonymous writes remain denied.
 
 The remaining one-time bootstrap needs an interactive browser session: sign in
@@ -24,15 +25,17 @@ document, and save one reviewed round. No Admin SDK private key is required.
 2. Under Authentication, enable the Google sign-in provider.
 3. Add `www.okoun.cz` to Authentication's authorized domains.
 4. Deploy the repository's `firestore.rules` in Firestore's Rules tab.
-5. Open a reviewed round in Pociťátko and press `Přihlásit k DB`.
-6. Copy the UID displayed in the round's DB status.
-7. In Firestore, create collection `admins` and a document whose document ID is
+5. Deploy Firebase Hosting from this repository so `/auth/` can complete
+   mobile sign-in without relying on blocked third-party browser storage.
+6. Open a reviewed round in Pociťátko and press `Přihlásit k DB`.
+7. Copy the UID displayed in the round's DB status.
+8. In Firestore, create collection `admins` and a document whose document ID is
    that UID. A simple field such as `enabled: true` is sufficient; the rules
    use document existence as the allowlist.
-8. Press `Uložit do DB`. The first successful save creates the club and round
+9. Press `Uložit do DB`. The first successful save creates the club and round
    documents.
 
-For the current project, steps 1–4 are complete. Resume at step 5 during the
+For the current project, steps 1–5 are complete. Resume at step 6 during the
 next Kiwi live-testing session.
 
 Do not switch to blanket public-write rules. Signing in does not grant write
@@ -64,4 +67,5 @@ substitution embeds the Web configuration into `pocitatko.user.js`:
 npm install
 npm run build
 npm run check
+npx firebase-tools deploy --only hosting,firestore:rules
 ```

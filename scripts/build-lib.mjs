@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -31,19 +31,32 @@ async function firebaseDefines() {
   );
 }
 
-export async function buildUserscript({ write = true } = {}) {
-  const metadata = await readFile(resolve(root, "src/metadata.txt"), "utf8");
-  const define = await firebaseDefines();
+async function bundledOutput(entryPoint) {
   const result = await build({
-    entryPoints: [resolve(root, "src/main.js")],
+    entryPoints: [resolve(root, entryPoint)],
     bundle: true,
     format: "iife",
     legalComments: "none",
     target: "es2020",
-    define,
+    define: await firebaseDefines(),
     write: false,
   });
-  const output = `${metadata.trim()}\n\n${result.outputFiles[0].text}`;
+  return result.outputFiles[0].text;
+}
+
+export async function buildUserscript({ write = true } = {}) {
+  const metadata = await readFile(resolve(root, "src/metadata.txt"), "utf8");
+  const output = `${metadata.trim()}\n\n${await bundledOutput("src/main.js")}`;
   if (write) await writeFile(resolve(root, "pocitatko.user.js"), output);
+  return output;
+}
+
+export async function buildAuthBridge({ write = true } = {}) {
+  const output = await bundledOutput("src/auth-bridge.js");
+  if (write) {
+    const directory = resolve(root, "firebase-hosting/auth");
+    await mkdir(directory, { recursive: true });
+    await writeFile(resolve(directory, "bridge.js"), output);
+  }
   return output;
 }

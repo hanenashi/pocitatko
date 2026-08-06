@@ -2,6 +2,19 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "hosting": {
+    "public": "firebase-hosting",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "/auth/**",
+        "headers": [
+          { "key": "Referrer-Policy", "value": "no-referrer" },
+          { "key": "X-Content-Type-Options", "value": "nosniff" }
+        ]
+      }
+    ]
+  },
   "emulators": {
     "firestore": {
       "port": 8080

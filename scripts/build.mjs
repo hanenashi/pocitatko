@@ -1,4 +1,5 @@
-import { buildUserscript } from "./build-lib.mjs";
+import { buildAuthBridge, buildUserscript } from "./build-lib.mjs";
 
 await buildUserscript();
-console.log("Built pocitatko.user.js");
+await buildAuthBridge();
+console.log("Built pocitatko.user.js and Firebase Auth bridge");

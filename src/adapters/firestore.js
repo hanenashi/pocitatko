@@ -1,11 +1,10 @@
 import { initializeApp } from "firebase/app";
 import {
-  getRedirectResult,
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithCredential,
   signInWithPopup,
-  signInWithRedirect,
   signOut,
 } from "firebase/auth";
 import { doc, getFirestore, serverTimestamp, writeBatch } from "firebase/firestore/lite";
@@ -23,6 +22,31 @@ function prefersRedirectSignIn() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || touchFirst;
 }
 
+const AUTH_HASH_KEY = "pocitatko-auth";
+const AUTH_NONCE_KEY = "pocitatko.firebase.authNonce";
+
+function encodeNonce() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+function consumeBridgeCredential() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const encoded = params.get(AUTH_HASH_KEY);
+  if (!encoded) return null;
+  params.delete(AUTH_HASH_KEY);
+  const cleanHash = params.toString();
+  history.replaceState(null, "", `${location.pathname}${location.search}${cleanHash ? `#${cleanHash}` : ""}`);
+  try {
+    const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const base64 = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(atob(base64));
+  } catch {
+    return { error: "AUTH_BRIDGE_INVALID_RESPONSE" };
+  }
+}
+
 export function createFirestoreAdapter() {
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
@@ -31,6 +55,7 @@ export function createFirestoreAdapter() {
   let user = auth.currentUser;
   let authReady = false;
   let authError = null;
+  const bridgeCredential = consumeBridgeCredential();
 
   function notifyListeners() {
     listeners.forEach((listener) => listener(publicUser(user)));
@@ -47,10 +72,19 @@ export function createFirestoreAdapter() {
     });
   });
 
-  getRedirectResult(auth).catch((error) => {
-    authError = error;
-    notifyListeners();
-  });
+  if (bridgeCredential) {
+    const expectedNonce = sessionStorage.getItem(AUTH_NONCE_KEY);
+    sessionStorage.removeItem(AUTH_NONCE_KEY);
+    if (bridgeCredential.error || !expectedNonce || bridgeCredential.nonce !== expectedNonce || !bridgeCredential.idToken) {
+      authError = new Error(bridgeCredential.error || "AUTH_BRIDGE_INVALID_RESPONSE");
+      notifyListeners();
+    } else {
+      signInWithCredential(auth, GoogleAuthProvider.credential(bridgeCredential.idToken)).catch((error) => {
+        authError = error;
+        notifyListeners();
+      });
+    }
+  }
 
   return {
     ready,
@@ -64,7 +98,13 @@ export function createFirestoreAdapter() {
       authError = null;
       const provider = new GoogleAuthProvider();
       if (prefersRedirectSignIn()) {
-        await signInWithRedirect(auth, provider);
+        const nonce = encodeNonce();
+        sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
+        const returnUrl = `${location.origin}${location.pathname}${location.search}`;
+        const bridgeUrl = new URL("/auth/", `https://${firebaseConfig.authDomain}`);
+        bridgeUrl.searchParams.set("returnUrl", returnUrl);
+        bridgeUrl.searchParams.set("nonce", nonce);
+        location.assign(bridgeUrl.href);
         return null;
       }
       const result = await signInWithPopup(auth, provider);
