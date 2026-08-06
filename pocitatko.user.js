@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.4.0
+// @version      0.4.1
 // @description  Read-only visual review helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -16,7 +16,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.4.0";
+  var VERSION = "0.4.1";
   var DATA_SCHEMA_VERSION = 1;
   var IDS = {
     launcher: "pocitatko-launcher",
@@ -7039,6 +7039,9 @@
     await persistence._remove(key);
     return hasPendingRedirect;
   }
+  async function _setPendingRedirectStatus(resolver, auth) {
+    return resolverPersistence(resolver)._set(pendingRedirectKey(auth), "true");
+  }
   function _overrideRedirectResult(auth, result) {
     redirectOutcomeMap.set(auth._key(), result);
   }
@@ -7047,6 +7050,29 @@
   }
   function pendingRedirectKey(auth) {
     return _persistenceKeyName(PENDING_REDIRECT_KEY, auth.config.apiKey, auth.name);
+  }
+  function signInWithRedirect(auth, provider, resolver) {
+    return _signInWithRedirect(auth, provider, resolver);
+  }
+  async function _signInWithRedirect(auth, provider, resolver) {
+    if (_isFirebaseServerApp(auth.app)) {
+      return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(auth));
+    }
+    const authInternal = _castAuth(auth);
+    _assertInstanceOf(auth, provider, FederatedAuthProvider);
+    await authInternal._initializationPromise;
+    const resolverInternal = _withDefaultResolver(authInternal, resolver);
+    await _setPendingRedirectStatus(resolverInternal, authInternal);
+    return resolverInternal._openRedirect(
+      authInternal,
+      provider,
+      "signInViaRedirect"
+      /* AuthEventType.SIGN_IN_VIA_REDIRECT */
+    );
+  }
+  async function getRedirectResult(auth, resolver) {
+    await _castAuth(auth)._initializationPromise;
+    return _getRedirectResult(auth, resolver, false);
   }
   async function _getRedirectResult(auth, resolverExtern, bypassAuthState = false) {
     if (_isFirebaseServerApp(auth.app)) {
@@ -11368,6 +11394,9 @@
   function publicUser(user) {
     return user ? { uid: user.uid, email: user.email || "", displayName: user.displayName || "" } : null;
   }
+  function prefersRedirectSignIn() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
   function createFirestoreAdapter() {
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -11375,6 +11404,10 @@
     const listeners = /* @__PURE__ */ new Set();
     let user = auth.currentUser;
     let authReady = false;
+    let authError = null;
+    function notifyListeners() {
+      listeners.forEach((listener) => listener(publicUser(user)));
+    }
     const ready = new Promise((resolve) => {
       onAuthStateChanged(auth, (nextUser) => {
         user = nextUser;
@@ -11382,18 +11415,29 @@
           authReady = true;
           resolve(publicUser(user));
         }
-        listeners.forEach((listener) => listener(publicUser(user)));
+        notifyListeners();
       });
+    });
+    getRedirectResult(auth).catch((error) => {
+      authError = error;
+      notifyListeners();
     });
     return {
       ready,
       currentUser: () => publicUser(user),
+      authError: () => authError,
       subscribe(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
       async signIn() {
-        const result = await signInWithPopup(auth, new GoogleAuthProvider());
+        authError = null;
+        const provider = new GoogleAuthProvider();
+        if (prefersRedirectSignIn()) {
+          await signInWithRedirect(auth, provider);
+          return null;
+        }
+        const result = await signInWithPopup(auth, provider);
         return publicUser(result.user);
       },
       async signOut() {
@@ -12021,7 +12065,7 @@
       renderRound();
       try {
         const user = await request;
-        state.databaseMessage = `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}`;
+        state.databaseMessage = user ? `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}` : "DB: pokra\u010Dujte p\u0159ihl\xE1\u0161en\xEDm na str\xE1nce Google\u2026";
       } catch (error) {
         state.databaseMessage = databaseErrorMessage(error);
       } finally {
@@ -12125,7 +12169,7 @@
       if (database) {
         const databaseStatus = document.createElement("p");
         databaseStatus.dataset.pocitatkoMuted = "";
-        databaseStatus.textContent = state.databaseMessage || (user ? `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}` : "DB: nep\u0159ihl\xE1\u0161eno \u2014 nic se neodes\xEDl\xE1");
+        databaseStatus.textContent = state.databaseMessage || (database.authError?.() ? databaseErrorMessage(database.authError()) : user ? `DB: p\u0159ihl\xE1\u0161eno ${user.email || user.displayName} \xB7 UID ${user.uid}` : "DB: nep\u0159ihl\xE1\u0161eno \u2014 nic se neodes\xEDl\xE1");
         prompt.append(databaseStatus);
       }
       if (round.unassigned.length) {

@@ -1,9 +1,11 @@
 import { initializeApp } from "firebase/app";
 import {
+  getRedirectResult,
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
 } from "firebase/auth";
 import { doc, getFirestore, serverTimestamp, writeBatch } from "firebase/firestore/lite";
@@ -15,6 +17,10 @@ function publicUser(user) {
     : null;
 }
 
+function prefersRedirectSignIn() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 export function createFirestoreAdapter() {
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
@@ -22,6 +28,11 @@ export function createFirestoreAdapter() {
   const listeners = new Set();
   let user = auth.currentUser;
   let authReady = false;
+  let authError = null;
+
+  function notifyListeners() {
+    listeners.forEach((listener) => listener(publicUser(user)));
+  }
 
   const ready = new Promise((resolve) => {
     onAuthStateChanged(auth, (nextUser) => {
@@ -30,19 +41,31 @@ export function createFirestoreAdapter() {
         authReady = true;
         resolve(publicUser(user));
       }
-      listeners.forEach((listener) => listener(publicUser(user)));
+      notifyListeners();
     });
+  });
+
+  getRedirectResult(auth).catch((error) => {
+    authError = error;
+    notifyListeners();
   });
 
   return {
     ready,
     currentUser: () => publicUser(user),
+    authError: () => authError,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     async signIn() {
-      const result = await signInWithPopup(auth, new GoogleAuthProvider());
+      authError = null;
+      const provider = new GoogleAuthProvider();
+      if (prefersRedirectSignIn()) {
+        await signInWithRedirect(auth, provider);
+        return null;
+      }
+      const result = await signInWithPopup(auth, provider);
       return publicUser(result.user);
     },
     async signOut() {

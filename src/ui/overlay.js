@@ -287,7 +287,9 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     renderRound();
     try {
       const user = await request;
-      state.databaseMessage = `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`;
+      state.databaseMessage = user
+        ? `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`
+        : "DB: pokračujte přihlášením na stránce Google…";
     } catch (error) {
       state.databaseMessage = databaseErrorMessage(error);
     } finally {
@@ -401,7 +403,9 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     if (database) {
       const databaseStatus = document.createElement("p");
       databaseStatus.dataset.pocitatkoMuted = "";
-      databaseStatus.textContent = state.databaseMessage || (user
+      databaseStatus.textContent = state.databaseMessage || (database.authError?.()
+        ? databaseErrorMessage(database.authError())
+        : user
         ? `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`
         : "DB: nepřihlášeno — nic se neodesílá");
       prompt.append(databaseStatus);
