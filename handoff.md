@@ -4,7 +4,11 @@
 
 Pociťátko `v0.5.7` restores the exact reviewed screen after the hosted Google redirect. Google/Firebase authentication keeps a stable UID through the credential bridge, Firestore writes are allowlisted, and an owner-only admin console is available to the verified Firebase account `hanenashi@gmail.com`.
 
-PRs #2 and #3 are merged. Local `main` and `origin/main` are both at `c0920d8` (`Merge pull request #3 from hanenashi/agent/owner-admin-console`). The working tree was clean at handoff time.
+PRs #2, #3, and #4 are merged. The latest feature baseline is `337f79b`
+(`Merge pull request #4 from hanenashi/agent/restore-auth-screen`). Use the
+live [`main`](https://github.com/hanenashi/pocitatko/commits/main) history as
+the source of truth for repository HEAD because a documentation commit cannot
+embed its own final SHA. The working tree was clean at handoff time.
 
 ## Machine and repository
 
@@ -85,7 +89,8 @@ The Firestore emulator test suite is written but was not executed on Akai becaus
 
 - PR #2, permanent Google-linked UID: merged as `80a4884`
 - PR #3, owner-only admin console: merged as `c0920d8`
-- `main` was synchronized with `origin/main` after the merge.
+- PR #4, reviewed-screen restoration after Google sign-in: merged as `337f79b`
+- `main` was synchronized with `origin/main` after the PR #4 merge.
 
 ## Safe next steps
 
