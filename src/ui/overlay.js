@@ -1,7 +1,7 @@
 import { olderUrlFrom, parseDocument, safeBoardUrl } from "../core/okoun.js";
 import { createRoundSnapshot } from "../core/snapshots.js";
 
-export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }) {
+export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, database }) {
   const state = {
     posts: [],
     sourceId: null,
@@ -15,7 +15,17 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
     error: "",
     detachViewport: null,
     roundSnapshot: null,
+    databaseBusy: false,
+    databaseMessage: "",
+    view: "closed",
   };
+
+  database?.subscribe(() => {
+    if (document.getElementById(ids.overlay) && state.view === "round" && !state.databaseBusy) {
+      const body = overlayParts().body;
+      renderRound({ scrollTop: body?.scrollTop || 0 });
+    }
+  });
 
   function mergePosts(posts) {
     const byId = new Map(state.posts.map((post) => [post.id, post]));
@@ -101,6 +111,7 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
   function closeOverlay() {
     state.detachViewport?.();
     state.detachViewport = null;
+    state.view = "closed";
     document.getElementById(ids.overlay)?.remove();
   }
 
@@ -177,6 +188,7 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
   function renderSourceChooser() {
     const { body, overlay } = overlayParts();
     if (!body || !overlay) return;
+    state.view = "chooser";
     const images = imagePosts();
     setHeader(
       `${state.posts.length} příspěvků · ${images.length} obrázků · ${state.loadedUrls.size} str.`,
@@ -257,6 +269,63 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
     if (button) button.disabled = disabled;
   }
 
+  function databaseErrorMessage(error) {
+    if (error?.code === "auth/unauthorized-domain") {
+      return "DB: doména www.okoun.cz není povolená ve Firebase Authentication";
+    }
+    if (error?.code === "auth/popup-closed-by-user") return "DB: přihlášení zrušeno";
+    if (error?.code === "permission-denied") {
+      return "DB: zápis odmítnut — UID ještě není v kolekci admins nebo nejsou nasazená pravidla";
+    }
+    return `DB: ${error?.message || "neznámá chyba"}`;
+  }
+
+  async function signInDatabase() {
+    state.databaseBusy = true;
+    state.databaseMessage = "DB: přihlašování…";
+    const request = database.signIn();
+    renderRound();
+    try {
+      const user = await request;
+      state.databaseMessage = `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`;
+    } catch (error) {
+      state.databaseMessage = databaseErrorMessage(error);
+    } finally {
+      state.databaseBusy = false;
+      renderRound();
+    }
+  }
+
+  async function signOutDatabase() {
+    state.databaseBusy = true;
+    try {
+      await database.signOut();
+      state.databaseMessage = "DB: odhlášeno";
+    } catch (error) {
+      state.databaseMessage = databaseErrorMessage(error);
+    } finally {
+      state.databaseBusy = false;
+      renderRound();
+    }
+  }
+
+  async function saveRoundToDatabase() {
+    const snapshot = state.roundSnapshot;
+    if (!snapshot) return;
+    state.databaseBusy = true;
+    state.databaseMessage = "DB: ukládání…";
+    renderRound();
+    try {
+      const result = await database.saveRound(snapshot, plugin.name);
+      state.databaseMessage = `DB: uloženo ${result.path}`;
+    } catch (error) {
+      state.databaseMessage = databaseErrorMessage(error);
+    } finally {
+      state.databaseBusy = false;
+      renderRound();
+    }
+  }
+
   function renderRound(options = {}) {
     const { body, overlay } = overlayParts();
     if (!body || !overlay) return;
@@ -265,6 +334,7 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
       renderSourceChooser();
       return;
     }
+    state.view = "round";
     const ranked = rankedCandidates(round);
     const suggestedWinner = ranked[0]?.candidate || null;
     const selectedWinner =
@@ -281,19 +351,31 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
     const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.reactionPosts, 0);
     const excludedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.excludedPosts, 0);
 
+    const copyButton = makeButton(
+      "Kopírovat výsledek",
+      () => selectedWinner && copyText(plugin.formatResult(selectedWinner)),
+      "primary",
+    );
+    copyButton.disabled = !selectedWinner;
+    const user = database?.currentUser();
+    const databaseButtons = !database
+      ? []
+      : user
+        ? [
+            makeButton(state.databaseBusy ? "DB pracuje…" : "Uložit do DB", saveRoundToDatabase),
+            makeButton("Odhlásit DB", signOutDatabase),
+          ]
+        : [makeButton(state.databaseBusy ? "DB pracuje…" : "Přihlásit k DB", signInDatabase)];
+    databaseButtons.forEach((button) => { button.disabled = state.databaseBusy; });
     const buttons = [
       makeButton("Změnit hranice", renderSourceChooser),
       ...(state.manualWinnerId
         ? [makeButton("Použít návrh", () => { state.manualWinnerId = null; renderRound(); })]
         : []),
-      makeButton(
-        "Kopírovat výsledek",
-        () => selectedWinner && copyText(plugin.formatResult(selectedWinner)),
-        "primary",
-      ),
+      ...databaseButtons,
+      copyButton,
       makeButton("Zavřít", closeOverlay),
     ];
-    buttons[buttons.length - 2].disabled = !selectedWinner;
     setHeader(
       `${round.candidates.length} soutěžících · ${includedReactionCount} hlasů${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}`,
       buttons,
@@ -316,6 +398,14 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
       ? `Konec ${state.endManuallyChanged ? "(ručně)" : "(návrh)"}: ${round.end.timestamp} — ${round.end.text}`
       : "Konec: aktuální stav bez vítězného oznámení";
     prompt.append(endMeta);
+    if (database) {
+      const databaseStatus = document.createElement("p");
+      databaseStatus.dataset.pocitatkoMuted = "";
+      databaseStatus.textContent = state.databaseMessage || (user
+        ? `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`
+        : "DB: nepřihlášeno — nic se neodesílá");
+      prompt.append(databaseStatus);
+    }
     if (round.unassigned.length) {
       const warning = document.createElement("p");
       warning.dataset.pocitatkoMuted = "";
@@ -428,6 +518,7 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles }
       posts: [], sourceId: null, endId: null, endManuallyChanged: false,
       manualWinnerId: null, excludedReactionIds: new Set(), olderUrl: "",
       loadedUrls: new Set(), error: "", roundSnapshot: null,
+      databaseMessage: "",
     });
 
     const overlay = document.createElement("div");

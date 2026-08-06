@@ -1,0 +1,8 @@
+export const firebaseConfig = {
+  apiKey: __POCITATKO_FIREBASE_API_KEY__,
+  authDomain: __POCITATKO_FIREBASE_AUTH_DOMAIN__,
+  projectId: __POCITATKO_FIREBASE_PROJECT_ID__,
+  storageBucket: __POCITATKO_FIREBASE_STORAGE_BUCKET__,
+  messagingSenderId: __POCITATKO_FIREBASE_MESSAGING_SENDER_ID__,
+  appId: __POCITATKO_FIREBASE_APP_ID__,
+};

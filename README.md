@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.3.0**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.4.0**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -30,9 +30,14 @@ shared core. Plugins are bundled into the same installable userscript for now.
 Reviewed rounds are also normalized behind a versioned data boundary using a
 stable club ID, source-post-based round ID, post IDs, entries, reactions,
 tallies, exclusions, winner selection, author keys, and avatar URLs. This data
-remains local today; a future opt-in storage adapter can send it to Firestore
-for historical results and live club statistics without coupling the database
-to parsing rules.
+can be sent through an explicit opt-in Firestore save for historical results
+and live club statistics without coupling the database to parsing rules.
+
+Version 0.4.0 includes the first Firestore adapter. A moderator can sign in
+with Google and explicitly save the currently reviewed round; opening or
+counting a round never uploads anything automatically. See
+[`FIREBASE.md`](FIREBASE.md) for authentication, admin allowlist, rules, and
+collection setup.
 
 ## Development
 
@@ -43,6 +48,7 @@ direct install link remains simple and reliable.
 
 ```sh
 npm install
+cp .env.example .env # then fill in the Firebase Web configuration
 npm run build
 npm run check
 ```

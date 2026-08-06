@@ -4,7 +4,7 @@ Pociťátko is distributed as one userscript, but its behavior is divided into
 three boundaries:
 
 ```text
-Okoun core -> club plugin -> normalized round snapshot -> future data adapter
+Okoun core -> club plugin -> normalized round snapshot -> Firestore adapter
 ```
 
 ## Okoun core
@@ -53,11 +53,13 @@ manual exclusions, unassigned post IDs, and both suggested and selected
 winners. Posts also retain their currently visible avatar URL for future live
 badge rendering. The snapshot deliberately contains no Firestore code.
 
-## Future Firestore adapter
+## Firestore adapter
 
-Persistence should be opt-in and consume only normalized snapshots. The
-adapter will own authentication, consent, retries, schema migration, and
-Firestore paths. Parsing plugins must not import Firebase or write remotely.
+Persistence is opt-in and consumes only normalized snapshots. The adapter owns
+Google authentication and Firestore paths; parsing plugins do not import
+Firebase or write remotely. Saving requires both an authenticated user and an
+`admins/{uid}` allowlist document, and happens only after the reviewer presses
+the save button.
 
 Derived views—historical winners, guessed counts, hit rates, and avatar overlay
 badges—should read normalized records or server-generated aggregates. Raw
