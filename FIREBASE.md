@@ -47,6 +47,12 @@ read back anonymously to verify the public historical-results path.
 Do not switch to blanket public-write rules. Signing in does not grant write
 access unless the matching admin document exists.
 
+The verified Firebase account `hanenashi@gmail.com` is the sole allowlist
+owner. Its in-app `Správa adminů` console can list, add, label, enable, and
+disable `admins/{uid}` documents. Firestore rules enforce this owner email and
+the verified-email claim; the button is not the security boundary. Ordinary
+admins cannot grant access. Admin authorization requires `enabled: true`.
+
 Google bridge identities follow the moderator across browsers after Google
 sign-in. A moderator who starts with an allowlisted anonymous identity can use
 `Zachovat UID přes Google` before signing out or clearing browser storage. This

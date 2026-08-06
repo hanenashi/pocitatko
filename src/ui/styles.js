@@ -42,6 +42,20 @@ export function addStyles(ids) {
     #${ids.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }
     #${ids.overlay} [data-pocitatko-reactions] li.excluded { opacity: .55; text-decoration: line-through; }
     #${ids.overlay} [data-pocitatko-reactions] button { padding: 3px 7px; font-size: 12px; text-decoration: none; }
+    #${ids.overlay} [data-pocitatko-admin-intro], #${ids.overlay} [data-pocitatko-admin-form], #${ids.overlay} [data-pocitatko-admin-list] { max-width: 980px; margin: 0 auto 14px; }
+    #${ids.overlay} [data-pocitatko-admin-intro] { padding: 14px; border-radius: 12px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-admin-intro] h3 { margin-top: 0; }
+    #${ids.overlay} [data-pocitatko-admin-form] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 14px; border: 1px solid #d7d0c5; border-radius: 12px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-admin-form] label:not([data-pocitatko-admin-enabled]) { display: grid; gap: 5px; }
+    #${ids.overlay} [data-pocitatko-admin-form] input[type="text"], #${ids.overlay} [data-pocitatko-admin-form] input[type="email"] { min-width: 0; width: 100%; border: 1px solid #aaa093; border-radius: 8px; padding: 9px 10px; background: #fffdf8; color: inherit; font: inherit; }
+    #${ids.overlay} [data-pocitatko-admin-enabled] { display: flex; align-items: center; }
+    #${ids.overlay} [data-pocitatko-admin-list] { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    #${ids.overlay} [data-pocitatko-admin-list] > h3 { grid-column: 1 / -1; margin-bottom: 0; }
+    #${ids.overlay} [data-pocitatko-admin-card] { min-width: 0; padding: 12px; border: 1px solid #d7d0c5; border-radius: 12px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-admin-card].disabled { opacity: .62; }
+    #${ids.overlay} [data-pocitatko-admin-card] header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #${ids.overlay} [data-pocitatko-admin-card] code { display: block; overflow-wrap: anywhere; margin: 8px 0; }
+    #${ids.overlay} [data-pocitatko-admin-card] > div { display: flex; flex-wrap: wrap; gap: 7px; }
     #${ids.overlay} a { color: #755800; }
     @media (max-width: 900px) {
       #${ids.overlay} { inset: 0; border-radius: 0; }
@@ -56,6 +70,8 @@ export function addStyles(ids) {
       #${ids.overlay} [data-pocitatko-prompt] > img { max-height: 34vh; }
       #${ids.overlay} [data-pocitatko-candidates] { padding: 10px 0; border: 0; }
       #${ids.overlay} [data-pocitatko-candidate] img { max-height: 42vh; }
+      #${ids.overlay} [data-pocitatko-admin-form] { grid-template-columns: 1fr; }
+      #${ids.overlay} [data-pocitatko-admin-list] { grid-template-columns: 1fr; }
     }
   `;
   document.head.appendChild(style);
