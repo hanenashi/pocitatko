@@ -5444,83 +5444,6 @@
     }
     return userCredential;
   }
-  function _fromIdTokenResponse(idTokenResponse) {
-    if (!idTokenResponse) {
-      return null;
-    }
-    const { providerId } = idTokenResponse;
-    const profile = idTokenResponse.rawUserInfo ? JSON.parse(idTokenResponse.rawUserInfo) : {};
-    const isNewUser = idTokenResponse.isNewUser || idTokenResponse.kind === "identitytoolkit#SignupNewUserResponse";
-    if (!providerId && idTokenResponse?.idToken) {
-      const signInProvider = _parseToken(idTokenResponse.idToken)?.firebase?.["sign_in_provider"];
-      if (signInProvider) {
-        const filteredProviderId = signInProvider !== "anonymous" && signInProvider !== "custom" ? signInProvider : null;
-        return new GenericAdditionalUserInfo(isNewUser, filteredProviderId);
-      }
-    }
-    if (!providerId) {
-      return null;
-    }
-    switch (providerId) {
-      case "facebook.com":
-        return new FacebookAdditionalUserInfo(isNewUser, profile);
-      case "github.com":
-        return new GithubAdditionalUserInfo(isNewUser, profile);
-      case "google.com":
-        return new GoogleAdditionalUserInfo(isNewUser, profile);
-      case "twitter.com":
-        return new TwitterAdditionalUserInfo(isNewUser, profile, idTokenResponse.screenName || null);
-      case "custom":
-      case "anonymous":
-        return new GenericAdditionalUserInfo(isNewUser, null);
-      default:
-        return new GenericAdditionalUserInfo(isNewUser, providerId, profile);
-    }
-  }
-  var GenericAdditionalUserInfo = class {
-    constructor(isNewUser, providerId, profile = {}) {
-      this.isNewUser = isNewUser;
-      this.providerId = providerId;
-      this.profile = profile;
-    }
-  };
-  var FederatedAdditionalUserInfoWithUsername = class extends GenericAdditionalUserInfo {
-    constructor(isNewUser, providerId, profile, username) {
-      super(isNewUser, providerId, profile);
-      this.username = username;
-    }
-  };
-  var FacebookAdditionalUserInfo = class extends GenericAdditionalUserInfo {
-    constructor(isNewUser, profile) {
-      super(isNewUser, "facebook.com", profile);
-    }
-  };
-  var GithubAdditionalUserInfo = class extends FederatedAdditionalUserInfoWithUsername {
-    constructor(isNewUser, profile) {
-      super(isNewUser, "github.com", profile, typeof profile?.login === "string" ? profile?.login : null);
-    }
-  };
-  var GoogleAdditionalUserInfo = class extends GenericAdditionalUserInfo {
-    constructor(isNewUser, profile) {
-      super(isNewUser, "google.com", profile);
-    }
-  };
-  var TwitterAdditionalUserInfo = class extends FederatedAdditionalUserInfoWithUsername {
-    constructor(isNewUser, profile, screenName) {
-      super(isNewUser, "twitter.com", profile, screenName);
-    }
-  };
-  function getAdditionalUserInfo(userCredential) {
-    const { user, _tokenResponse } = userCredential;
-    if (user.isAnonymous && !_tokenResponse) {
-      return {
-        providerId: null,
-        isNewUser: false,
-        profile: null
-      };
-    }
-    return _fromIdTokenResponse(_tokenResponse);
-  }
   function onIdTokenChanged(auth, nextOrObserver, error, completed) {
     return getModularInstance(auth).onIdTokenChanged(nextOrObserver, error, completed);
   }
@@ -7989,6 +7912,7 @@
   var RETURN_URL_KEY = "pocitatko.authBridge.returnUrl";
   var NONCE_KEY = "pocitatko.authBridge.nonce";
   var ACTION_KEY = "pocitatko.authBridge.action";
+  var LINK_STARTED_AT_KEY = "pocitatko.authBridge.linkStartedAt";
   function show(message, error = false) {
     const status = document.getElementById("status");
     status.textContent = message;
@@ -8022,7 +7946,10 @@
     show("Dokon\u010Duji p\u0159ihl\xE1\u0161en\xED\u2026");
     const result = await getRedirectResult(auth);
     if (!result) {
-      if (action === "link") await signOut(auth);
+      if (action === "link") {
+        await signOut(auth);
+        sessionStorage.setItem(LINK_STARTED_AT_KEY, String(Date.now()));
+      }
       show("Otev\xEDr\xE1m p\u0159ihl\xE1\u0161en\xED Google\u2026");
       await signInWithRedirect(auth, new GoogleAuthProvider());
       return;
@@ -8031,7 +7958,10 @@
     if (!credential?.idToken) throw new Error("Google neposlal p\u0159ihla\u0161ovac\xED token.");
     let error = "";
     if (action === "link") {
-      if (getAdditionalUserInfo(result)?.isNewUser) {
+      const linkStartedAt = Number(sessionStorage.getItem(LINK_STARTED_AT_KEY));
+      const accountCreatedAt = Date.parse(result.user.metadata.creationTime || "");
+      const createdDuringThisLink = Number.isFinite(linkStartedAt) && Number.isFinite(accountCreatedAt) && accountCreatedAt >= linkStartedAt - 5e3 && accountCreatedAt <= Date.now() + 5e3;
+      if (createdDuringThisLink) {
         await deleteUser(result.user);
       } else {
         error = "auth/credential-already-in-use";
@@ -8040,6 +7970,7 @@
     sessionStorage.removeItem(RETURN_URL_KEY);
     sessionStorage.removeItem(NONCE_KEY);
     sessionStorage.removeItem(ACTION_KEY);
+    sessionStorage.removeItem(LINK_STARTED_AT_KEY);
     const returnUrl = allowedReturnUrl(savedReturnUrl);
     returnUrl.hash = new URLSearchParams({
       "pocitatko-auth": encodePayload(error ? { nonce, error } : { nonce, idToken: credential.idToken })

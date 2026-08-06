@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
 import {
   deleteUser,
-  getAdditionalUserInfo,
   getAuth,
   getRedirectResult,
   GoogleAuthProvider,
@@ -13,6 +12,7 @@ import { firebaseConfig } from "./core/firebase-config.js";
 const RETURN_URL_KEY = "pocitatko.authBridge.returnUrl";
 const NONCE_KEY = "pocitatko.authBridge.nonce";
 const ACTION_KEY = "pocitatko.authBridge.action";
+const LINK_STARTED_AT_KEY = "pocitatko.authBridge.linkStartedAt";
 
 function show(message, error = false) {
   const status = document.getElementById("status");
@@ -52,7 +52,10 @@ async function run() {
   show("Dokončuji přihlášení…");
   const result = await getRedirectResult(auth);
   if (!result) {
-    if (action === "link") await signOut(auth);
+    if (action === "link") {
+      await signOut(auth);
+      sessionStorage.setItem(LINK_STARTED_AT_KEY, String(Date.now()));
+    }
     show("Otevírám přihlášení Google…");
     await signInWithRedirect(auth, new GoogleAuthProvider());
     return;
@@ -62,7 +65,13 @@ async function run() {
   if (!credential?.idToken) throw new Error("Google neposlal přihlašovací token.");
   let error = "";
   if (action === "link") {
-    if (getAdditionalUserInfo(result)?.isNewUser) {
+    const linkStartedAt = Number(sessionStorage.getItem(LINK_STARTED_AT_KEY));
+    const accountCreatedAt = Date.parse(result.user.metadata.creationTime || "");
+    const createdDuringThisLink = Number.isFinite(linkStartedAt)
+      && Number.isFinite(accountCreatedAt)
+      && accountCreatedAt >= linkStartedAt - 5_000
+      && accountCreatedAt <= Date.now() + 5_000;
+    if (createdDuringThisLink) {
       await deleteUser(result.user);
     } else {
       error = "auth/credential-already-in-use";
@@ -71,6 +80,7 @@ async function run() {
   sessionStorage.removeItem(RETURN_URL_KEY);
   sessionStorage.removeItem(NONCE_KEY);
   sessionStorage.removeItem(ACTION_KEY);
+  sessionStorage.removeItem(LINK_STARTED_AT_KEY);
   const returnUrl = allowedReturnUrl(savedReturnUrl);
   returnUrl.hash = new URLSearchParams({
     "pocitatko-auth": encodePayload(error
