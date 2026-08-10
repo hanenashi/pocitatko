@@ -4,15 +4,15 @@ Pociťátko is distributed as one userscript, but its behavior is divided into
 three boundaries:
 
 ```text
-Okoun core -> club plugin -> normalized round snapshot -> Firestore adapter
+Okoun parser -> club plugin -> local review overlay
 ```
 
 ## Okoun core
 
-The core parses Okoun posts and reply links, loads board pages, renders the
-review overlay, tracks manual exclusions and winner overrides, and manages
-userscript settings. It should not contain assumptions about a club's scoring
-or round workflow.
+The core parses Okoun posts and reply links, loads an older page only when the
+reviewer asks for it, renders the review overlay, tracks manual exclusions and
+winner overrides, and manages userscript settings. It should not contain
+assumptions about a club's scoring or round workflow.
 
 ## Club plugin contract
 
@@ -36,32 +36,14 @@ and composes the core, overlay, styles, launcher, and settings modules. The
 build script bundles them into the committed `pocitatko.user.js`; users install
 only that generated file and never depend on runtime module downloads.
 
-## Normalized round snapshots
+## Local-only boundary
 
-`createRoundSnapshot` converts the reviewed plugin result into schema version
-1. Stable document identity is:
+Parsed posts, selected boundaries, exclusions and winner overrides exist only
+in the overlay's in-memory state. Closing or reloading the page discards the
+review. The only persistent userscript values are launcher preferences such as
+visibility and safe screen position.
 
-```text
-clubId: plugin ID
-roundId: {clubId}:{source Okoun post ID}
-entry/reaction identity: Okoun post ID
-user identity: normalized Okoun username (`authorKey`)
-```
-
-The snapshot includes source and end posts, ranked entries, reaction evidence,
-manual exclusions, unassigned post IDs, and both suggested and selected
-winners. Posts also retain their currently visible avatar URL for future live
-badge rendering. The snapshot deliberately contains no Firestore code.
-
-## Firestore adapter
-
-Persistence is opt-in and consumes only normalized snapshots. The adapter owns
-Google authentication and Firestore paths; parsing plugins do not import
-Firebase or write remotely. Saving requires both an authenticated user and an
-`admins/{uid}` allowlist document, and happens only after the reviewer presses
-the save button.
-
-Derived views—historical winners, guessed counts, hit rates, and avatar overlay
-badges—should read normalized records or server-generated aggregates. Raw
-review evidence should remain available so corrected classifications can be
-recomputed instead of silently overwriting history.
+The bundle contains no network client beyond same-origin Okoun page loading.
+It never posts to Okoun, signs into another service, uploads results, or runs a
+background collector. The reviewer can copy formatted result text and decide
+separately where to paste it.

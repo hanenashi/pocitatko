@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.5.7**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.6.0**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -27,38 +27,20 @@ The first plugin preserves the existing `vymysli_vtipny_textik` workflow. New
 clubs can use different rules without adding club-specific guesses to the
 shared core. Plugins are bundled into the same installable userscript for now.
 
-Reviewed rounds are also normalized behind a versioned data boundary using a
-stable club ID, source-post-based round ID, post IDs, entries, reactions,
-tallies, exclusions, winner selection, author keys, and avatar URLs. This data
-can be sent through an explicit opt-in Firestore save for historical results
-and live club statistics without coupling the database to parsing rules.
-
-Version 0.5.7 includes two Firestore sign-in choices. A moderator can use the
-first-party Google bridge for a portable identity, or request an anonymous UID
-that belongs to the current browser profile and can be manually allowlisted.
-Both identities remain unable to write until their UID exists under `admins/`.
-An allowlisted anonymous UID can be linked to Google in place, keeping the same
-UID and admin entry while making the account recoverable on another device.
-The verified owner account `hanenashi@gmail.com` also gets an in-app admin
-console for adding, labeling, enabling, and disabling moderator UIDs.
-After the temporary Google sign-in page returns to Okoun, Pociťátko reopens the
-same round, selections, exclusions, loaded-page depth, and scroll position.
-Opening or counting a round never uploads anything automatically. The Google
-bridge returns a nonce-checked credential in the URL fragment and the
-userscript removes it before initializing the rest of its UI. See
-[`FIREBASE.md`](FIREBASE.md) for authentication, admin allowlist, rules, and
-collection setup.
+Version 0.6.0 is deliberately local-only. It reads the currently open public
+board page and older pages explicitly requested by the reviewer, performs the
+count in memory, and offers copyable result text. It has no account sign-in,
+remote persistence, background collection, or historical-statistics layer.
 
 ## Development
 
-The maintainable source lives in `src/`: shared parsing and snapshots under
+The maintainable source lives in `src/`: shared parsing and settings under
 `src/core/`, club behavior under `src/plugins/`, and browser UI under
 `src/ui/`. The root `pocitatko.user.js` is a generated, committed bundle so the
 direct install link remains simple and reliable.
 
 ```sh
 npm install
-cp .env.example .env # then fill in the Firebase Web configuration
 npm run build
 npm run check
 ```

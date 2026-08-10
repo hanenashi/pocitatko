@@ -1,5 +1,4 @@
-export const VERSION = "0.5.7";
-export const DATA_SCHEMA_VERSION = 1;
+export const VERSION = "0.6.0";
 export const IDS = {
   launcher: "pocitatko-launcher",
   overlay: "pocitatko-overlay",

@@ -1,8 +1,6 @@
 import { olderUrlFrom, parseDocument, safeBoardUrl } from "../core/okoun.js";
-import { createRoundSnapshot } from "../core/snapshots.js";
-import { consumeAuthReturnState, saveAuthReturnState } from "./auth-return-state.js";
 
-export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, database }) {
+export function createOverlay({ plugin, ids, version, addStyles }) {
   const state = {
     posts: [],
     sourceId: null,
@@ -15,23 +13,8 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     loading: false,
     error: "",
     detachViewport: null,
-    roundSnapshot: null,
-    databaseBusy: false,
-    databaseMessage: "",
-    admins: [],
-    adminDraft: { uid: "", email: "", okounUser: "", enabled: true },
-    adminMessage: "",
-    adminReturnView: "chooser",
     view: "closed",
   };
-
-  database?.subscribe(() => {
-    if (!document.getElementById(ids.overlay) || state.databaseBusy) return;
-    const body = overlayParts().body;
-    if (state.view === "round") renderRound({ scrollTop: body?.scrollTop || 0 });
-    else if (state.view === "chooser") renderSourceChooser();
-    else if (state.view === "admins") renderAdminConsole();
-  });
 
   function mergePosts(posts) {
     const byId = new Map(state.posts.map((post) => [post.id, post]));
@@ -160,7 +143,6 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     state.endManuallyChanged = false;
     state.manualWinnerId = null;
     state.excludedReactionIds = new Set();
-    state.roundSnapshot = null;
     renderSourceChooser();
   }
 
@@ -203,9 +185,6 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
           state.loading ? "Načítám…" : state.olderUrl ? "Načíst starší stránku" : "Bez dalších stránek",
           loadOneOlderPage,
         ),
-        ...(database?.canManageAdmins?.()
-          ? [makeButton("Správa adminů", () => openAdminConsole("chooser"))]
-          : []),
         makeButton("Zavřít", closeOverlay),
       ],
     );
@@ -278,304 +257,6 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     if (button) button.disabled = disabled;
   }
 
-  function databaseErrorMessage(error) {
-    if (error?.code === "auth/unauthorized-domain") {
-      return "DB: doména www.okoun.cz není povolená ve Firebase Authentication";
-    }
-    if (error?.code === "auth/popup-closed-by-user") return "DB: přihlášení zrušeno";
-    if (error?.code === "auth/operation-not-allowed") {
-      return "DB: anonymní přihlášení ještě není povolené ve Firebase Authentication";
-    }
-    if (error?.code === "auth/credential-already-in-use") {
-      return "DB: tento Google účet už patří jinému Firebase UID";
-    }
-    if (error?.code === "auth/link-requires-anonymous") {
-      return "DB: anonymní UID už není aktivní — přihlaste se přes Google";
-    }
-    if (error?.code === "permission-denied") {
-      return "DB: zápis odmítnut — UID ještě není v kolekci admins nebo nejsou nasazená pravidla";
-    }
-    if (error?.code === "invalid-argument") return "DB: zadejte platné Firebase UID";
-    return `DB: ${error?.message || "neznámá chyba"}`;
-  }
-
-  function databaseUserMessage(user) {
-    if (!user) return "DB: nepřihlášeno — nic se neodesílá";
-    if (user.isAnonymous) return `DB: UID tohoto prohlížeče ${user.uid}`;
-    return `DB: přihlášeno ${user.email || user.displayName} · UID ${user.uid}`;
-  }
-
-  const currentPageUrl = () => `${location.origin}${location.pathname}${location.search}`;
-
-  function rememberAuthReturnState() {
-    const { body } = overlayParts();
-    saveAuthReturnState(sessionStorage, {
-      pageUrl: currentPageUrl(),
-      view: state.view,
-      sourceId: state.sourceId,
-      endId: state.endId,
-      endManuallyChanged: state.endManuallyChanged,
-      manualWinnerId: state.manualWinnerId,
-      excludedReactionIds: state.excludedReactionIds,
-      loadedPageCount: state.loadedUrls.size,
-      scrollTop: body?.scrollTop || 0,
-    });
-  }
-
-  async function signInDatabase(method) {
-    if (method === "google") rememberAuthReturnState();
-    state.databaseBusy = true;
-    state.databaseMessage = "DB: přihlašování…";
-    const request = method === "anonymous"
-      ? database.signInAnonymously()
-      : database.signInWithGoogle();
-    renderRound();
-    try {
-      const user = await request;
-      state.databaseMessage = user
-        ? databaseUserMessage(user)
-        : "DB: pokračujte přihlášením na stránce Google…";
-    } catch (error) {
-      state.databaseMessage = databaseErrorMessage(error);
-    } finally {
-      state.databaseBusy = false;
-      renderRound();
-    }
-  }
-
-  async function signOutDatabase() {
-    state.databaseBusy = true;
-    try {
-      await database.signOut();
-      state.databaseMessage = "DB: odhlášeno";
-    } catch (error) {
-      state.databaseMessage = databaseErrorMessage(error);
-    } finally {
-      state.databaseBusy = false;
-      renderRound();
-    }
-  }
-
-  async function makeDatabasePermanent() {
-    rememberAuthReturnState();
-    state.databaseBusy = true;
-    state.databaseMessage = "DB: propojuji UID s Google…";
-    renderRound();
-    try {
-      await database.makePermanentWithGoogle();
-      state.databaseMessage = "DB: pokračujte propojením na stránce Google…";
-    } catch (error) {
-      state.databaseMessage = databaseErrorMessage(error);
-    } finally {
-      state.databaseBusy = false;
-      renderRound();
-    }
-  }
-
-  async function saveRoundToDatabase() {
-    const snapshot = state.roundSnapshot;
-    if (!snapshot) return;
-    state.databaseBusy = true;
-    state.databaseMessage = "DB: ukládání…";
-    renderRound();
-    try {
-      const result = await database.saveRound(snapshot, plugin.name);
-      state.databaseMessage = `DB: uloženo ${result.path}`;
-    } catch (error) {
-      state.databaseMessage = databaseErrorMessage(error);
-    } finally {
-      state.databaseBusy = false;
-      renderRound();
-    }
-  }
-
-  function adminInput(labelText, key, options = {}) {
-    const label = document.createElement("label");
-    const title = document.createElement("strong");
-    title.textContent = labelText;
-    const input = document.createElement("input");
-    input.type = options.type || "text";
-    input.placeholder = options.placeholder || "";
-    input.autocomplete = options.autocomplete || "off";
-    input.value = state.adminDraft[key];
-    input.addEventListener("input", () => { state.adminDraft[key] = input.value; });
-    label.append(title, input);
-    return label;
-  }
-
-  function returnFromAdminConsole() {
-    if (state.adminReturnView === "round" && state.roundSnapshot) renderRound();
-    else renderSourceChooser();
-  }
-
-  async function loadAdmins() {
-    state.databaseBusy = true;
-    state.adminMessage = "Načítám seznam adminů…";
-    renderAdminConsole();
-    try {
-      state.admins = await database.listAdmins();
-      state.adminMessage = `Načteno ${state.admins.length} záznamů.`;
-    } catch (error) {
-      state.adminMessage = databaseErrorMessage(error);
-    } finally {
-      state.databaseBusy = false;
-      renderAdminConsole();
-    }
-  }
-
-  async function saveAdminDraft() {
-    state.databaseBusy = true;
-    state.adminMessage = "Ukládám admina…";
-    renderAdminConsole();
-    try {
-      const result = await database.saveAdmin(state.adminDraft);
-      state.adminDraft = { uid: "", email: "", okounUser: "", enabled: true };
-      state.adminMessage = `Admin ${result.uid} byl uložen.`;
-      state.admins = await database.listAdmins();
-    } catch (error) {
-      state.adminMessage = databaseErrorMessage(error);
-    } finally {
-      state.databaseBusy = false;
-      renderAdminConsole();
-    }
-  }
-
-  async function toggleAdmin(admin) {
-    state.databaseBusy = true;
-    state.adminMessage = admin.enabled ? "Zakazuji přístup…" : "Povoluji přístup…";
-    renderAdminConsole();
-    try {
-      await database.saveAdmin({ ...admin, enabled: !admin.enabled });
-      state.admins = await database.listAdmins();
-      state.adminMessage = `${admin.uid}: přístup ${admin.enabled ? "zakázán" : "povolen"}.`;
-    } catch (error) {
-      state.adminMessage = databaseErrorMessage(error);
-    } finally {
-      state.databaseBusy = false;
-      renderAdminConsole();
-    }
-  }
-
-  function openAdminConsole(returnView = state.view) {
-    if (!database?.canManageAdmins?.()) return;
-    state.adminReturnView = returnView === "round" ? "round" : "chooser";
-    state.adminDraft = { uid: "", email: "", okounUser: "", enabled: true };
-    state.adminMessage = "";
-    state.view = "admins";
-    void loadAdmins();
-  }
-
-  function renderAdminConsole() {
-    const { body } = overlayParts();
-    if (!body) return;
-    state.view = "admins";
-    const activeCount = state.admins.filter((admin) => admin.enabled).length;
-    setHeader(`Správa adminů · ${activeCount} aktivních`, [
-      makeButton("Zpět", returnFromAdminConsole),
-      makeButton(state.databaseBusy ? "Načítám…" : "Obnovit", loadAdmins),
-      makeButton("Zavřít", closeOverlay),
-    ]);
-    body.replaceChildren();
-
-    const intro = document.createElement("section");
-    intro.dataset.pocitatkoAdminIntro = "";
-    const heading = document.createElement("h3");
-    heading.textContent = "Admin konzole";
-    const explanation = document.createElement("p");
-    explanation.textContent = "Přístup se uděluje Firebase UID. E-mail a Okoun jméno jsou pouze popisky pro orientaci.";
-    const owner = document.createElement("p");
-    owner.dataset.pocitatkoMuted = "";
-    owner.textContent = "Správu může podle Firestore pravidel používat pouze ověřený účet hanenashi@gmail.com.";
-    intro.append(heading, explanation, owner);
-    if (state.adminMessage) {
-      const message = document.createElement("p");
-      message.dataset.pocitatkoMuted = "";
-      message.textContent = state.adminMessage;
-      intro.append(message);
-    }
-
-    const form = document.createElement("form");
-    form.dataset.pocitatkoAdminForm = "";
-    form.append(
-      adminInput("Firebase UID", "uid", { placeholder: "např. prxK9Ys…" }),
-      adminInput("Google e-mail (volitelné)", "email", {
-        type: "email",
-        placeholder: "moderator@example.com",
-        autocomplete: "email",
-      }),
-      adminInput("Okoun uživatel (volitelné)", "okounUser", { placeholder: "Blasnik" }),
-    );
-    const enabledLabel = document.createElement("label");
-    enabledLabel.dataset.pocitatkoAdminEnabled = "";
-    const enabled = document.createElement("input");
-    enabled.type = "checkbox";
-    enabled.checked = state.adminDraft.enabled;
-    enabled.addEventListener("change", () => { state.adminDraft.enabled = enabled.checked; });
-    enabledLabel.append(enabled, document.createTextNode(" Přístup povolen"));
-    const save = document.createElement("button");
-    save.type = "submit";
-    save.className = "primary";
-    save.textContent = state.databaseBusy ? "Ukládám…" : "Uložit admina";
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      if (!state.databaseBusy) void saveAdminDraft();
-    });
-    const clear = makeButton("Vyčistit formulář", () => {
-      state.adminDraft = { uid: "", email: "", okounUser: "", enabled: true };
-      renderAdminConsole();
-    });
-    form.append(enabledLabel, save, clear);
-
-    const list = document.createElement("section");
-    list.dataset.pocitatkoAdminList = "";
-    const listTitle = document.createElement("h3");
-    listTitle.textContent = "Záznamy v admins";
-    list.append(listTitle);
-    if (!state.admins.length && !state.databaseBusy) {
-      const empty = document.createElement("p");
-      empty.textContent = "Zatím tu nejsou žádné admin záznamy.";
-      list.append(empty);
-    }
-    for (const admin of state.admins) {
-      const card = document.createElement("article");
-      card.dataset.pocitatkoAdminCard = "";
-      if (!admin.enabled) card.classList.add("disabled");
-      const cardHeader = document.createElement("header");
-      const name = document.createElement("strong");
-      name.textContent = admin.okounUser || admin.email || admin.uid;
-      const status = document.createElement("span");
-      status.dataset.pocitatkoChip = "";
-      status.textContent = admin.enabled ? "aktivní" : "zakázaný";
-      cardHeader.append(name, status);
-      const uid = document.createElement("code");
-      uid.textContent = admin.uid;
-      const labels = document.createElement("p");
-      labels.dataset.pocitatkoMuted = "";
-      labels.textContent = [admin.email, admin.okounUser].filter(Boolean).join(" · ") || "Bez popisku";
-      const controls = document.createElement("div");
-      controls.append(
-        makeButton("Upravit", () => {
-          state.adminDraft = {
-            uid: admin.uid,
-            email: admin.email || "",
-            okounUser: admin.okounUser || "",
-            enabled: Boolean(admin.enabled),
-          };
-          renderAdminConsole();
-          body.scrollTop = 0;
-        }),
-        makeButton(admin.enabled ? "Zakázat" : "Povolit", () => toggleAdmin(admin)),
-      );
-      card.append(cardHeader, uid, labels, controls);
-      list.append(card);
-    }
-
-    body.append(intro, form, list);
-    body.querySelectorAll("button, input").forEach((control) => {
-      control.disabled = state.databaseBusy;
-    });
-  }
-
   function renderRound(options = {}) {
     const { body, overlay } = overlayParts();
     if (!body || !overlay) return;
@@ -590,14 +271,6 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     const selectedWinner =
       round.candidates.find((candidate) => candidate.id === state.manualWinnerId) ||
       suggestedWinner;
-    state.roundSnapshot = createRoundSnapshot({
-      schemaVersion,
-      plugin,
-      round,
-      ranked,
-      selectedWinner,
-      state,
-    });
     const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.reactionPosts, 0);
     const excludedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.excludedPosts, 0);
 
@@ -607,38 +280,11 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
       "primary",
     );
     copyButton.disabled = !selectedWinner;
-    const user = database?.currentUser();
-    const databaseButtons = !database
-      ? []
-      : user
-        ? [
-            makeButton(state.databaseBusy ? "DB pracuje…" : "Uložit do DB", saveRoundToDatabase),
-            makeButton("Kopírovat UID", () => copyText(user.uid)),
-            ...(user.isAnonymous
-              ? [makeButton("Zachovat UID přes Google", makeDatabasePermanent)]
-              : []),
-            ...(database.canManageAdmins?.()
-              ? [makeButton("Správa adminů", () => openAdminConsole("round"))]
-              : []),
-            makeButton(user.isAnonymous ? "Odhlásit (UID nepůjde obnovit)" : "Odhlásit DB", signOutDatabase),
-          ]
-        : [
-            makeButton(
-              state.databaseBusy ? "DB pracuje…" : "Přihlásit přes Google",
-              () => signInDatabase("google"),
-            ),
-            makeButton(
-              "Použít UID tohoto prohlížeče",
-              () => signInDatabase("anonymous"),
-            ),
-          ];
-    databaseButtons.forEach((button) => { button.disabled = state.databaseBusy; });
     const buttons = [
       makeButton("Změnit hranice", renderSourceChooser),
       ...(state.manualWinnerId
         ? [makeButton("Použít návrh", () => { state.manualWinnerId = null; renderRound(); })]
         : []),
-      ...databaseButtons,
       copyButton,
       makeButton("Zavřít", closeOverlay),
     ];
@@ -664,14 +310,6 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
       ? `Konec ${state.endManuallyChanged ? "(ručně)" : "(návrh)"}: ${round.end.timestamp} — ${round.end.text}`
       : "Konec: aktuální stav bez vítězného oznámení";
     prompt.append(endMeta);
-    if (database) {
-      const databaseStatus = document.createElement("p");
-      databaseStatus.dataset.pocitatkoMuted = "";
-      databaseStatus.textContent = state.databaseMessage || (database.authError?.()
-        ? databaseErrorMessage(database.authError())
-        : databaseUserMessage(user));
-      prompt.append(databaseStatus);
-    }
     if (round.unassigned.length) {
       const warning = document.createElement("p");
       warning.dataset.pocitatkoMuted = "";
@@ -777,27 +415,13 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
     else navigator.clipboard?.writeText(value);
   }
 
-  function restoreScrollTop(scrollTop) {
-    const apply = () => {
-      const { body } = overlayParts();
-      if (body) body.scrollTop = scrollTop;
-    };
-    apply();
-    requestAnimationFrame(() => {
-      apply();
-      requestAnimationFrame(apply);
-    });
-  }
-
-  async function openOverlay(options = {}) {
-    const restoreState = options.restoreState || null;
+  async function openOverlay() {
     closeOverlay();
     addStyles(ids);
     Object.assign(state, {
       posts: [], sourceId: null, endId: null, endManuallyChanged: false,
       manualWinnerId: null, excludedReactionIds: new Set(), olderUrl: "",
-      loadedUrls: new Set(), error: "", roundSnapshot: null,
-      databaseMessage: "",
+      loadedUrls: new Set(), error: "",
     });
 
     const overlay = document.createElement("div");
@@ -812,33 +436,12 @@ export function createOverlay({ plugin, ids, version, schemaVersion, addStyles, 
 
     scanCurrentDocument();
     renderSourceChooser();
-    const targetPageCount = restoreState?.loadedPageCount || (state.olderUrl ? 2 : 1);
+    const targetPageCount = state.olderUrl ? 2 : 1;
     while (state.olderUrl && state.loadedUrls.size < targetPageCount) {
       await loadOneOlderPage();
     }
 
-    if (!restoreState) return;
-    Object.assign(state, {
-      sourceId: restoreState.sourceId,
-      endId: restoreState.endId,
-      endManuallyChanged: restoreState.endManuallyChanged,
-      manualWinnerId: restoreState.manualWinnerId,
-      excludedReactionIds: restoreState.excludedReactionIds,
-    });
-    if (restoreState.view === "round" && state.sourceId) {
-      renderRound({ scrollTop: restoreState.scrollTop });
-    } else {
-      renderSourceChooser();
-    }
-    restoreScrollTop(restoreState.scrollTop);
   }
 
-  async function restoreAuthReturn() {
-    const restoreState = consumeAuthReturnState(sessionStorage, currentPageUrl());
-    if (!restoreState) return false;
-    await openOverlay({ restoreState });
-    return true;
-  }
-
-  return { openOverlay, closeOverlay, restoreAuthReturn };
+  return { openOverlay, closeOverlay };
 }
