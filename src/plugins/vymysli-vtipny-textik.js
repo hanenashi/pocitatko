@@ -9,7 +9,7 @@ export const vymysliVtipnyTextik = {
     return posts.filter((post) => !post.parentId && post.imageUrls.length);
   },
   isRoundEnd(post) {
-    return /^vyhr[aá]l\b.*\bgratul/i.test(post.text);
+    return /^(?:vyhr[aá]l(?:\/a|a|i)?|rem[ií]za)\b.*\bgratul/i.test(post.text);
   },
   roundEndsAfter(posts, sourceId) {
     return posts
@@ -76,6 +76,12 @@ export const vymysliVtipnyTextik = {
   },
   formatResult(winner) {
     return `Vyhrál/a ${winner.author}. Gratulace!`;
+  },
+  formatTie(winners) {
+    const authors = winners.map((winner) => winner.author);
+    const last = authors.pop();
+    const names = authors.length ? `${authors.join(", ")} a ${last}` : last;
+    return `Remíza mezi ${names}. Gratulace!`;
   },
   sourceExplanation:
     "Klikni na zdrojový obrázek. Po potvrzení se všechny pozdější samostatné obrázkové příspěvky vezmou jako soutěžní návrhy a jejich vláknové odpovědi jako reakce.",

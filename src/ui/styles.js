@@ -38,6 +38,7 @@ export function addStyles(ids) {
     #${ids.overlay} [data-pocitatko-candidate] img { display: block; max-width: 100%; max-height: 520px; margin: 10px auto; border-radius: 8px; object-fit: contain; background: #e8e2d8; }
     #${ids.overlay} [data-pocitatko-score] { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
     #${ids.overlay} [data-pocitatko-chip] { padding: 3px 8px; border-radius: 999px; background: #eee8dc; font-size: 12px; }
+    #${ids.overlay} [data-pocitatko-candidate-controls] { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
     #${ids.overlay} [data-pocitatko-tie] { margin: 12px 0 0; padding: 11px 12px; border: 2px solid #bb6b16; border-radius: 9px; background: #fff0d3; color: #613200; font-weight: 700; }
     #${ids.overlay} details { margin-top: 8px; }
     #${ids.overlay} [data-pocitatko-reactions] { margin: 7px 0 0; padding-left: 21px; }
@@ -56,8 +57,20 @@ export function addStyles(ids) {
       #${ids.overlay} [data-pocitatko-round] { display: block; }
       #${ids.overlay} [data-pocitatko-prompt] { position: static; }
       #${ids.overlay} [data-pocitatko-prompt] > img { max-height: 34vh; }
-      #${ids.overlay} [data-pocitatko-candidates] { padding: 10px 0; border: 0; }
-      #${ids.overlay} [data-pocitatko-candidate] img { max-height: 42vh; }
+      #${ids.overlay} [data-pocitatko-candidates] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 0; border: 0; }
+      #${ids.overlay} [data-pocitatko-candidates] > h3 { grid-column: 1 / -1; margin-bottom: 2px; }
+      #${ids.overlay} [data-pocitatko-candidate] { min-width: 0; margin: 0; padding: 8px; }
+      #${ids.overlay} [data-pocitatko-candidate] img { width: 100%; max-height: 32vh; }
+      #${ids.overlay} [data-pocitatko-candidate] header small { font-size: 10px; }
+      #${ids.overlay} [data-pocitatko-reactions] { padding-left: 16px; }
+      #${ids.overlay} [data-pocitatko-reactions] li { display: flex; flex-direction: column; gap: 4px; }
+      #${ids.overlay} [data-pocitatko-reactions] button { align-self: flex-start; }
+    }
+    @media (max-width: 600px) {
+      #${ids.overlay} [data-pocitatko-header] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 8px 10px; }
+      #${ids.overlay} [data-pocitatko-header] h2 { grid-column: 1 / -1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+      #${ids.overlay} [data-pocitatko-header] > span { grid-column: 1 / -1; font-size: 12px; }
+      #${ids.overlay} [data-pocitatko-header] > button { width: 100%; min-width: 0; padding: 6px 7px; font-size: 12px; }
     }
   `;
   document.head.appendChild(style);

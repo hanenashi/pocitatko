@@ -23,7 +23,8 @@ Each entry exported from `src/plugins/` supplies:
   club's workflow;
 - `buildRound` for assigning normalized Okoun posts to entries and reactions;
 - `scoreCandidate` and `rankCandidates` for the club's voting rules;
-- `formatResult` and `sourceExplanation` for club-specific output and guidance.
+- `formatResult`, `formatTie`, and `sourceExplanation` for club-specific output
+  and guidance.
 
 The current `vymysli_vtipny_textik` plugin is the compatibility baseline. A
 new plugin should be tested against recorded rounds from its own club before

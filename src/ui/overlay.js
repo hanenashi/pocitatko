@@ -8,6 +8,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     endId: null,
     endManuallyChanged: false,
     manualWinnerId: null,
+    tieAccepted: false,
     excludedReactionIds: new Set(),
     olderUrl: "",
     loadedUrls: new Set(),
@@ -145,6 +146,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     state.endId = suggestedEndId(postId);
     state.endManuallyChanged = false;
     state.manualWinnerId = null;
+    state.tieAccepted = false;
     state.excludedReactionIds = new Set();
     renderSourceChooser();
   }
@@ -170,6 +172,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       state.endId = Number(select.value) || null;
       state.endManuallyChanged = true;
       state.manualWinnerId = null;
+      state.tieAccepted = false;
       renderSourceChooser();
     });
     wrapper.append(label, select);
@@ -272,18 +275,38 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     const ranked = rankedCandidates(round);
     const winner = resolveWinner(ranked, state.manualWinnerId);
     const { isTie, leaders, selectedWinner, topPoints } = winner;
+    const acceptedTie = isTie && state.tieAccepted && !winner.manualWinner;
     const leaderIds = new Set(leaders.map(({ candidate }) => candidate.id));
     const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.reactionPosts, 0);
     const excludedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.excludedPosts, 0);
 
     const copyButton = makeButton(
-      isTie && !winner.manualWinner ? "Vyber vítěze remízy" : "Kopírovat výsledek",
-      () => selectedWinner && copyText(plugin.formatResult(selectedWinner)),
+      acceptedTie
+        ? "Kopírovat remízu"
+        : isTie && !winner.manualWinner ? "Vyber výsledek remízy" : "Kopírovat výsledek",
+      () => {
+        if (acceptedTie) {
+          copyText(plugin.formatTie(leaders.map(({ candidate }) => candidate)));
+        } else if (selectedWinner) {
+          copyText(plugin.formatResult(selectedWinner));
+        }
+      },
       "primary",
     );
-    copyButton.disabled = !selectedWinner;
+    copyButton.disabled = !selectedWinner && !acceptedTie;
     const buttons = [
       makeButton("Změnit hranice", renderSourceChooser),
+      ...(isTie
+        ? [makeButton(
+            acceptedTie ? "Zrušit remízu" : "Ukončit remízou",
+            () => {
+              state.tieAccepted = !acceptedTie;
+              if (state.tieAccepted) state.manualWinnerId = null;
+              renderRound();
+            },
+            acceptedTie ? "" : "primary",
+          )]
+        : []),
       ...(state.manualWinnerId
         ? [makeButton(
             isTie ? "Zrušit ruční výběr" : "Použít návrh",
@@ -321,9 +344,11 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       tieWarning.dataset.pocitatkoTie = "";
       tieWarning.setAttribute("role", "alert");
       const tiedAuthors = leaders.map(({ candidate }) => candidate.author).join(", ");
-      tieWarning.textContent = winner.manualWinner
-        ? `Remíza o 1. místo (${voteCountLabel(topPoints)}): ${tiedAuthors}. Ručně vybrán: ${winner.manualWinner.author}.`
-        : `Remíza o 1. místo (${voteCountLabel(topPoints)}): ${tiedAuthors}. Vyber vítěze ručně; do té doby nejde výsledek kopírovat.`;
+      tieWarning.textContent = acceptedTie
+        ? `Remíza o 1. místo (${voteCountLabel(topPoints)}): ${tiedAuthors}. Kolo bude ukončeno remízou.`
+        : winner.manualWinner
+          ? `Remíza o 1. místo (${voteCountLabel(topPoints)}): ${tiedAuthors}. Ručně vybrán: ${winner.manualWinner.author}.`
+          : `Remíza o 1. místo (${voteCountLabel(topPoints)}): ${tiedAuthors}. Vyber jednoho vítěze, nebo ukonči kolo remízou.`;
       prompt.append(tieWarning);
     }
     if (round.unassigned.length) {
@@ -347,7 +372,9 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       card.dataset.postId = String(candidate.id);
       if (isTie && leaderIds.has(candidate.id)) card.classList.add("tied");
       else if (index === 0) card.classList.add("suggested");
-      if (candidate.id === selectedWinner?.id) card.classList.add("winner");
+      if (candidate.id === selectedWinner?.id || (acceptedTie && leaderIds.has(candidate.id))) {
+        card.classList.add("winner");
+      }
       const header = document.createElement("header");
       const author = document.createElement("strong");
       author.textContent = candidate.author;
@@ -372,7 +399,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
         `${stats.reactionPosts} reakcí`,
         stats.excludedPosts ? `${stats.excludedPosts} vyřazeno` : "",
         isTie && leaderIds.has(candidate.id)
-          ? "remíza o 1. místo"
+          ? acceptedTie ? "spoluvítěz" : "remíza o 1. místo"
           : index === 0 ? "návrh Pociťátka" : "",
       ].filter(Boolean).forEach((label) => {
         const chip = document.createElement("span");
@@ -383,12 +410,19 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       card.append(score);
 
       const controls = document.createElement("div");
+      controls.dataset.pocitatkoCandidateControls = "";
       controls.append(
         makeButton(
           candidate.id === selectedWinner?.id
             ? state.manualWinnerId ? "Ruční vítěz" : "Navržený vítěz"
-            : isTie && leaderIds.has(candidate.id) ? "Vybrat z remízy" : "Vybrat ručně",
-          () => { state.manualWinnerId = candidate.id; renderRound(); },
+            : isTie && leaderIds.has(candidate.id)
+              ? acceptedTie ? "Vybrat jako jediného" : "Vybrat z remízy"
+              : "Vybrat ručně",
+          () => {
+            state.tieAccepted = false;
+            state.manualWinnerId = candidate.id;
+            renderRound();
+          },
           candidate.id === selectedWinner?.id ? "primary" : "",
         ),
         document.createTextNode(" "),
@@ -412,6 +446,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
         text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
         const toggle = makeButton(excluded ? "Vrátit hlas" : "Nezapočítat", () => {
           const scrollTop = body.scrollTop;
+          state.tieAccepted = false;
           if (excluded) state.excludedReactionIds.delete(reaction.id);
           else state.excludedReactionIds.add(reaction.id);
           renderRound({ scrollTop });
@@ -439,7 +474,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     addStyles(ids);
     Object.assign(state, {
       posts: [], sourceId: null, endId: null, endManuallyChanged: false,
-      manualWinnerId: null, excludedReactionIds: new Set(), olderUrl: "",
+      manualWinnerId: null, tieAccepted: false, excludedReactionIds: new Set(), olderUrl: "",
       loadedUrls: new Set(), error: "",
     });
 

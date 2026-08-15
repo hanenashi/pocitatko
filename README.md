@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.6.1**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.6.2**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -27,7 +27,7 @@ The first plugin preserves the existing `vymysli_vtipny_textik` workflow. New
 clubs can use different rules without adding club-specific guesses to the
 shared core. Plugins are bundled into the same installable userscript for now.
 
-Version 0.6.1 is deliberately local-only. It reads the currently open public
+Version 0.6.2 is deliberately local-only. It reads the currently open public
 board page and older pages explicitly requested by the reviewer, performs the
 count in memory, and offers copyable result text. It has no account sign-in,
 remote persistence, background collection, or historical-statistics layer.
@@ -66,8 +66,8 @@ The userscript would:
 - suggest a winner using one included vote per reacting user; `!`, `!!`,
   `!!!!!`, and mixed punctuation such as `!@&$+` have equal weight;
 - allow manual corrections, exclusions, tie handling, and winner selection;
-- show every shared leader when the top score is tied and require a manual
-  winner before the result can be copied;
+- show every shared leader when the top score is tied and let the reviewer
+  either choose one winner or preserve and copy the tie result;
 - let the reviewer exclude and restore replies that are discussion rather than
   votes, recalculating the suggestion immediately;
 - provide copyable result text without posting it automatically.
@@ -76,6 +76,9 @@ The floating Pociťátko button can be dragged with a mouse or finger. Its
 position is remembered and kept inside the visible browser area. The
 userscript manager's settings menu can hide it, show it again, or reset a
 troublesome saved position and restore the button to its safe default.
+
+On narrow screens the header actions and candidate cards use two-column grids
+to leave more vertical room for the evidence.
 
 The tool should remain strictly read-only. It must not post, edit, delete, or
 vote on behalf of anyone.

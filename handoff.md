@@ -2,7 +2,7 @@
 
 ## Current direction
 
-Pociťátko `v0.6.1` is a local, read-only counting and visual-review tool for
+Pociťátko `v0.6.2` is a local, read-only counting and visual-review tool for
 Okoun competition rounds. It does not retain reviewed rounds remotely, collect
 history in the background, or contain account-management controls.
 
@@ -29,7 +29,8 @@ ready for other clubs with independently defined rules.
 - candidate images, captions and direct reactions shown together;
 - one included vote per reacting user regardless of repeated punctuation;
 - manual reaction exclusion/restoration and winner override;
-- explicit tie warning with manual resolution required before copying;
+- explicit tie warning with either one manual winner or preserved co-winners;
+- compact two-column mobile header actions and candidate cards;
 - copyable result text;
 - same-origin loading of older pages on reviewer request;
 - draggable launcher with hide/show/reset settings.
