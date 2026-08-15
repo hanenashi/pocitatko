@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.6.0**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.6.1**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -27,7 +27,7 @@ The first plugin preserves the existing `vymysli_vtipny_textik` workflow. New
 clubs can use different rules without adding club-specific guesses to the
 shared core. Plugins are bundled into the same installable userscript for now.
 
-Version 0.6.0 is deliberately local-only. It reads the currently open public
+Version 0.6.1 is deliberately local-only. It reads the currently open public
 board page and older pages explicitly requested by the reviewer, performs the
 count in memory, and offers copyable result text. It has no account sign-in,
 remote persistence, background collection, or historical-statistics layer.
@@ -66,6 +66,8 @@ The userscript would:
 - suggest a winner using one included vote per reacting user; `!`, `!!`,
   `!!!!!`, and mixed punctuation such as `!@&$+` have equal weight;
 - allow manual corrections, exclusions, tie handling, and winner selection;
+- show every shared leader when the top score is tied and require a manual
+  winner before the result can be copied;
 - let the reviewer exclude and restore replies that are discussion rather than
   votes, recalculating the suggestion immediately;
 - provide copyable result text without posting it automatically.

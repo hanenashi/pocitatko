@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.6.0
+// @version      0.6.1
 // @description  Local read-only visual counting helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.6.0";
+  var VERSION = "0.6.1";
   var IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -321,6 +321,26 @@
     return safeBoardUrl(absoluteUrl(href, pageUrl), plugin);
   }
 
+  // src/core/ranking.js
+  function resolveWinner(ranked, manualWinnerId = null) {
+    const first = ranked[0] || null;
+    const topPoints = first?.stats.points ?? null;
+    const leaders = first ? ranked.filter((entry) => entry.stats.points === topPoints) : [];
+    const isTie = leaders.length > 1;
+    const manualWinner = ranked.find(
+      ({ candidate }) => candidate.id === manualWinnerId
+    )?.candidate || null;
+    const suggestedWinner = isTie ? null : first?.candidate || null;
+    return {
+      topPoints,
+      leaders,
+      isTie,
+      manualWinner,
+      suggestedWinner,
+      selectedWinner: manualWinner || suggestedWinner
+    };
+  }
+
   // src/ui/overlay.js
   function createOverlay({ plugin, ids, version, addStyles: addStyles2 }) {
     const state = {
@@ -377,6 +397,7 @@
     const suggestedEndId = (sourceId) => plugin.suggestedEndId(state.posts, sourceId);
     const buildRound = (sourceId = state.sourceId) => plugin.buildRound({ posts: state.posts, sourceId, endId: state.endId });
     const rankedCandidates = (round) => plugin.rankCandidates(round, { excludedReactionIds: state.excludedReactionIds });
+    const voteCountLabel = (count) => `${count} ${count === 1 ? "hlas" : count >= 2 && count <= 4 ? "hlasy" : "hlas\u016F"}`;
     function makeButton(label, onClick, className = "") {
       const node = document.createElement("button");
       node.type = "button";
@@ -567,27 +588,32 @@
       }
       state.view = "round";
       const ranked = rankedCandidates(round);
-      const suggestedWinner = ranked[0]?.candidate || null;
-      const selectedWinner = round.candidates.find((candidate) => candidate.id === state.manualWinnerId) || suggestedWinner;
+      const winner = resolveWinner(ranked, state.manualWinnerId);
+      const { isTie, leaders, selectedWinner, topPoints } = winner;
+      const leaderIds = new Set(leaders.map(({ candidate }) => candidate.id));
       const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.reactionPosts, 0);
       const excludedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.excludedPosts, 0);
       const copyButton = makeButton(
-        "Kop\xEDrovat v\xFDsledek",
+        isTie && !winner.manualWinner ? "Vyber v\xEDt\u011Bze rem\xEDzy" : "Kop\xEDrovat v\xFDsledek",
         () => selectedWinner && copyText(plugin.formatResult(selectedWinner)),
         "primary"
       );
       copyButton.disabled = !selectedWinner;
       const buttons = [
         makeButton("Zm\u011Bnit hranice", renderSourceChooser),
-        ...state.manualWinnerId ? [makeButton("Pou\u017E\xEDt n\xE1vrh", () => {
-          state.manualWinnerId = null;
-          renderRound();
-        })] : [],
+        ...state.manualWinnerId ? [makeButton(
+          isTie ? "Zru\u0161it ru\u010Dn\xED v\xFDb\u011Br" : "Pou\u017E\xEDt n\xE1vrh",
+          () => {
+            state.manualWinnerId = null;
+            renderRound();
+          }
+        )] : [],
         copyButton,
         makeButton("Zav\u0159\xEDt", closeOverlay)
       ];
+      const tieStatus = isTie ? ` \xB7 REM\xCDZA ${leaders.length}\xD7 ${voteCountLabel(topPoints)}` : "";
       setHeader(
-        `${round.candidates.length} sout\u011B\u017E\xEDc\xEDch \xB7 ${includedReactionCount} hlas\u016F${excludedReactionCount ? ` \xB7 ${excludedReactionCount} vy\u0159azeno` : ""}`,
+        `${round.candidates.length} sout\u011B\u017E\xEDc\xEDch \xB7 ${includedReactionCount} hlas\u016F${excludedReactionCount ? ` \xB7 ${excludedReactionCount} vy\u0159azeno` : ""}${tieStatus}`,
         buttons
       );
       body.replaceChildren();
@@ -605,6 +631,14 @@
       endMeta.dataset.pocitatkoMuted = "";
       endMeta.textContent = round.end ? `Konec ${state.endManuallyChanged ? "(ru\u010Dn\u011B)" : "(n\xE1vrh)"}: ${round.end.timestamp} \u2014 ${round.end.text}` : "Konec: aktu\xE1ln\xED stav bez v\xEDt\u011Bzn\xE9ho ozn\xE1men\xED";
       prompt.append(endMeta);
+      if (isTie) {
+        const tieWarning = document.createElement("div");
+        tieWarning.dataset.pocitatkoTie = "";
+        tieWarning.setAttribute("role", "alert");
+        const tiedAuthors = leaders.map(({ candidate }) => candidate.author).join(", ");
+        tieWarning.textContent = winner.manualWinner ? `Rem\xEDza o 1. m\xEDsto (${voteCountLabel(topPoints)}): ${tiedAuthors}. Ru\u010Dn\u011B vybr\xE1n: ${winner.manualWinner.author}.` : `Rem\xEDza o 1. m\xEDsto (${voteCountLabel(topPoints)}): ${tiedAuthors}. Vyber v\xEDt\u011Bze ru\u010Dn\u011B; do t\xE9 doby nejde v\xFDsledek kop\xEDrovat.`;
+        prompt.append(tieWarning);
+      }
       if (round.unassigned.length) {
         const warning = document.createElement("p");
         warning.dataset.pocitatkoMuted = "";
@@ -620,7 +654,8 @@
         const card = document.createElement("article");
         card.dataset.pocitatkoCandidate = "";
         card.dataset.postId = String(candidate.id);
-        if (index === 0) card.classList.add("suggested");
+        if (isTie && leaderIds.has(candidate.id)) card.classList.add("tied");
+        else if (index === 0) card.classList.add("suggested");
         if (candidate.id === selectedWinner?.id) card.classList.add("winner");
         const header = document.createElement("header");
         const author = document.createElement("strong");
@@ -640,11 +675,11 @@
         const score = document.createElement("div");
         score.dataset.pocitatkoScore = "";
         [
-          `${stats.points} hlas\u016F`,
+          voteCountLabel(stats.points),
           `${stats.uniqueReactors} lid\xED`,
           `${stats.reactionPosts} reakc\xED`,
           stats.excludedPosts ? `${stats.excludedPosts} vy\u0159azeno` : "",
-          index === 0 ? "n\xE1vrh Poci\u0165\xE1tka" : ""
+          isTie && leaderIds.has(candidate.id) ? "rem\xEDza o 1. m\xEDsto" : index === 0 ? "n\xE1vrh Poci\u0165\xE1tka" : ""
         ].filter(Boolean).forEach((label) => {
           const chip = document.createElement("span");
           chip.dataset.pocitatkoChip = "";
@@ -655,7 +690,7 @@
         const controls = document.createElement("div");
         controls.append(
           makeButton(
-            candidate.id === selectedWinner?.id ? state.manualWinnerId ? "Ru\u010Dn\xED v\xEDt\u011Bz" : "Navr\u017Een\xFD v\xEDt\u011Bz" : "Vybrat ru\u010Dn\u011B",
+            candidate.id === selectedWinner?.id ? state.manualWinnerId ? "Ru\u010Dn\xED v\xEDt\u011Bz" : "Navr\u017Een\xFD v\xEDt\u011Bz" : isTie && leaderIds.has(candidate.id) ? "Vybrat z rem\xEDzy" : "Vybrat ru\u010Dn\u011B",
             () => {
               state.manualWinnerId = candidate.id;
               renderRound();
@@ -768,12 +803,14 @@
     #${ids.overlay} [data-pocitatko-candidates] { padding: 14px; border-left: 1px solid #d7d0c5; }
     #${ids.overlay} [data-pocitatko-candidate] { margin: 0 0 14px; padding: 12px; border: 2px solid transparent; border-radius: 12px; background: #fffdf8; }
     #${ids.overlay} [data-pocitatko-candidate].suggested { border-color: #d0a51d; }
+    #${ids.overlay} [data-pocitatko-candidate].tied { border-color: #bb6b16; border-style: dashed; box-shadow: 0 0 0 3px #bb6b1622; }
     #${ids.overlay} [data-pocitatko-candidate].winner { border-color: #23804b; box-shadow: 0 0 0 3px #23804b22; }
     #${ids.overlay} [data-pocitatko-candidate] header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
     #${ids.overlay} [data-pocitatko-candidate] header small, #${ids.overlay} [data-pocitatko-muted] { color: #6d665d; }
     #${ids.overlay} [data-pocitatko-candidate] img { display: block; max-width: 100%; max-height: 520px; margin: 10px auto; border-radius: 8px; object-fit: contain; background: #e8e2d8; }
     #${ids.overlay} [data-pocitatko-score] { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
     #${ids.overlay} [data-pocitatko-chip] { padding: 3px 8px; border-radius: 999px; background: #eee8dc; font-size: 12px; }
+    #${ids.overlay} [data-pocitatko-tie] { margin: 12px 0 0; padding: 11px 12px; border: 2px solid #bb6b16; border-radius: 9px; background: #fff0d3; color: #613200; font-weight: 700; }
     #${ids.overlay} details { margin-top: 8px; }
     #${ids.overlay} [data-pocitatko-reactions] { margin: 7px 0 0; padding-left: 21px; }
     #${ids.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }

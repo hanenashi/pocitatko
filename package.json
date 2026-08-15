@@ -1,11 +1,12 @@
 {
   "name": "pocitatko",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node scripts/check-generated.mjs"
+    "check": "node scripts/check-generated.mjs",
+    "test": "node --test"
   },
   "devDependencies": {
     "esbuild": "^0.25.8"

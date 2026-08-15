@@ -1,4 +1,5 @@
 import { olderUrlFrom, parseDocument, safeBoardUrl } from "../core/okoun.js";
+import { resolveWinner } from "../core/ranking.js";
 
 export function createOverlay({ plugin, ids, version, addStyles }) {
   const state = {
@@ -61,6 +62,8 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     plugin.buildRound({ posts: state.posts, sourceId, endId: state.endId });
   const rankedCandidates = (round) =>
     plugin.rankCandidates(round, { excludedReactionIds: state.excludedReactionIds });
+  const voteCountLabel = (count) =>
+    `${count} ${count === 1 ? "hlas" : count >= 2 && count <= 4 ? "hlasy" : "hlasů"}`;
 
   function makeButton(label, onClick, className = "") {
     const node = document.createElement("button");
@@ -267,15 +270,14 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     }
     state.view = "round";
     const ranked = rankedCandidates(round);
-    const suggestedWinner = ranked[0]?.candidate || null;
-    const selectedWinner =
-      round.candidates.find((candidate) => candidate.id === state.manualWinnerId) ||
-      suggestedWinner;
+    const winner = resolveWinner(ranked, state.manualWinnerId);
+    const { isTie, leaders, selectedWinner, topPoints } = winner;
+    const leaderIds = new Set(leaders.map(({ candidate }) => candidate.id));
     const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.reactionPosts, 0);
     const excludedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.excludedPosts, 0);
 
     const copyButton = makeButton(
-      "Kopírovat výsledek",
+      isTie && !winner.manualWinner ? "Vyber vítěze remízy" : "Kopírovat výsledek",
       () => selectedWinner && copyText(plugin.formatResult(selectedWinner)),
       "primary",
     );
@@ -283,13 +285,17 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     const buttons = [
       makeButton("Změnit hranice", renderSourceChooser),
       ...(state.manualWinnerId
-        ? [makeButton("Použít návrh", () => { state.manualWinnerId = null; renderRound(); })]
+        ? [makeButton(
+            isTie ? "Zrušit ruční výběr" : "Použít návrh",
+            () => { state.manualWinnerId = null; renderRound(); },
+          )]
         : []),
       copyButton,
       makeButton("Zavřít", closeOverlay),
     ];
+    const tieStatus = isTie ? ` · REMÍZA ${leaders.length}× ${voteCountLabel(topPoints)}` : "";
     setHeader(
-      `${round.candidates.length} soutěžících · ${includedReactionCount} hlasů${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}`,
+      `${round.candidates.length} soutěžících · ${includedReactionCount} hlasů${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}${tieStatus}`,
       buttons,
     );
     body.replaceChildren();
@@ -310,6 +316,16 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       ? `Konec ${state.endManuallyChanged ? "(ručně)" : "(návrh)"}: ${round.end.timestamp} — ${round.end.text}`
       : "Konec: aktuální stav bez vítězného oznámení";
     prompt.append(endMeta);
+    if (isTie) {
+      const tieWarning = document.createElement("div");
+      tieWarning.dataset.pocitatkoTie = "";
+      tieWarning.setAttribute("role", "alert");
+      const tiedAuthors = leaders.map(({ candidate }) => candidate.author).join(", ");
+      tieWarning.textContent = winner.manualWinner
+        ? `Remíza o 1. místo (${voteCountLabel(topPoints)}): ${tiedAuthors}. Ručně vybrán: ${winner.manualWinner.author}.`
+        : `Remíza o 1. místo (${voteCountLabel(topPoints)}): ${tiedAuthors}. Vyber vítěze ručně; do té doby nejde výsledek kopírovat.`;
+      prompt.append(tieWarning);
+    }
     if (round.unassigned.length) {
       const warning = document.createElement("p");
       warning.dataset.pocitatkoMuted = "";
@@ -329,7 +345,8 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       const card = document.createElement("article");
       card.dataset.pocitatkoCandidate = "";
       card.dataset.postId = String(candidate.id);
-      if (index === 0) card.classList.add("suggested");
+      if (isTie && leaderIds.has(candidate.id)) card.classList.add("tied");
+      else if (index === 0) card.classList.add("suggested");
       if (candidate.id === selectedWinner?.id) card.classList.add("winner");
       const header = document.createElement("header");
       const author = document.createElement("strong");
@@ -350,11 +367,13 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       const score = document.createElement("div");
       score.dataset.pocitatkoScore = "";
       [
-        `${stats.points} hlasů`,
+        voteCountLabel(stats.points),
         `${stats.uniqueReactors} lidí`,
         `${stats.reactionPosts} reakcí`,
         stats.excludedPosts ? `${stats.excludedPosts} vyřazeno` : "",
-        index === 0 ? "návrh Pociťátka" : "",
+        isTie && leaderIds.has(candidate.id)
+          ? "remíza o 1. místo"
+          : index === 0 ? "návrh Pociťátka" : "",
       ].filter(Boolean).forEach((label) => {
         const chip = document.createElement("span");
         chip.dataset.pocitatkoChip = "";
@@ -368,7 +387,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
         makeButton(
           candidate.id === selectedWinner?.id
             ? state.manualWinnerId ? "Ruční vítěz" : "Navržený vítěz"
-            : "Vybrat ručně",
+            : isTie && leaderIds.has(candidate.id) ? "Vybrat z remízy" : "Vybrat ručně",
           () => { state.manualWinnerId = candidate.id; renderRound(); },
           candidate.id === selectedWinner?.id ? "primary" : "",
         ),
