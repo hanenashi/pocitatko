@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.6.2
+// @version      0.6.3
 // @description  Local read-only visual counting helper for Okoun club rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -17,7 +17,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.6.2";
+  var VERSION = "0.6.3";
   var IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -33,7 +33,7 @@
       return url.origin === location.origin && url.pathname === this.boardPath;
     },
     sourcePosts(posts) {
-      return posts.filter((post) => !post.parentId && post.imageUrls.length);
+      return posts.filter((post) => post.imageUrls.length);
     },
     isRoundEnd(post) {
       return /^(?:vyhr[aá]l(?:\/a|a|i)?|rem[ií]za)\b.*\bgratul/i.test(post.text);
@@ -89,7 +89,7 @@
       const names = authors.length ? `${authors.join(", ")} a ${last}` : last;
       return `Rem\xEDza mezi ${names}. Gratulace!`;
     },
-    sourceExplanation: "Klikni na zdrojov\xFD obr\xE1zek. Po potvrzen\xED se v\u0161echny pozd\u011Bj\u0161\xED samostatn\xE9 obr\xE1zkov\xE9 p\u0159\xEDsp\u011Bvky vezmou jako sout\u011B\u017En\xED n\xE1vrhy a jejich vl\xE1knov\xE9 odpov\u011Bdi jako reakce."
+    sourceExplanation: "Klikni na zdrojov\xFD obr\xE1zek (m\u016F\u017Ee b\xFDt i v odpov\u011Bdi). Po potvrzen\xED se v\u0161echny pozd\u011Bj\u0161\xED samostatn\xE9 obr\xE1zkov\xE9 p\u0159\xEDsp\u011Bvky vezmou jako sout\u011B\u017En\xED n\xE1vrhy a jejich vl\xE1knov\xE9 odpov\u011Bdi jako reakce."
   };
   var clubPlugins = [vymysliVtipnyTextik];
 

@@ -6,7 +6,10 @@ export const vymysliVtipnyTextik = {
     return url.origin === location.origin && url.pathname === this.boardPath;
   },
   sourcePosts(posts) {
-    return posts.filter((post) => !post.parentId && post.imageUrls.length);
+    // A winner may reply to the previous result when posting the next assignment.
+    // Source selection is manual, so keep image replies available here while
+    // buildRound continues to accept only top-level images as competition entries.
+    return posts.filter((post) => post.imageUrls.length);
   },
   isRoundEnd(post) {
     return /^(?:vyhr[aá]l(?:\/a|a|i)?|rem[ií]za)\b.*\bgratul/i.test(post.text);
@@ -84,7 +87,7 @@ export const vymysliVtipnyTextik = {
     return `Remíza mezi ${names}. Gratulace!`;
   },
   sourceExplanation:
-    "Klikni na zdrojový obrázek. Po potvrzení se všechny pozdější samostatné obrázkové příspěvky vezmou jako soutěžní návrhy a jejich vláknové odpovědi jako reakce.",
+    "Klikni na zdrojový obrázek (může být i v odpovědi). Po potvrzení se všechny pozdější samostatné obrázkové příspěvky vezmou jako soutěžní návrhy a jejich vláknové odpovědi jako reakce.",
 };
 
 export const clubPlugins = [vymysliVtipnyTextik];
