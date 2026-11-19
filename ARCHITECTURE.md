@@ -9,7 +9,7 @@ Okoun parser -> club plugin -> local review overlay
 
 ## Okoun core
 
-The core parses Okoun posts and reply links, loads an older page only when the
+The core parses classic Okoun or Kapybara posts and reply links, loads an older page only when the
 reviewer asks for it, renders the review overlay, tracks manual exclusions and
 winner overrides, and manages userscript settings. It should not contain
 assumptions about a club's scoring or round workflow.
@@ -21,6 +21,7 @@ Each entry exported from `src/plugins/` supplies:
 - `id`, `name`, `boardPath`, and `matchesBoardUrl` for routing;
 - `sourcePosts`, `isRoundEnd`, `roundEndsAfter`, and `suggestedEndId` for the
   club's workflow;
+- `countingModes` for voting systems available on the current frontend;
 - `buildRound` for assigning normalized Okoun posts to entries and reactions;
 - `scoreCandidate` and `rankCandidates` for the club's voting rules;
 - `formatResult`, `formatTie`, and `sourceExplanation` for club-specific output

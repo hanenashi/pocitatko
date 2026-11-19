@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.6.3
-// @description  Local read-only visual counting helper for Okoun club rounds.
+// @version      0.7.0
+// @description  Local read-only visual counting helper for classic Okoun and experimental Kapybara rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
+// @match        https://kapybara.okoun.cz/boards/vymysli_vtipny_textik*
 // @updateURL    https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
 // @downloadURL  https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
 // @grant        GM_deleteValue
@@ -17,7 +18,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.6.3";
+  var VERSION = "0.7.0";
   var IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -30,7 +31,16 @@
     name: "Vymysli vtipn\xFD text\xEDk",
     boardPath: "/boards/vymysli_vtipny_textik",
     matchesBoardUrl(url) {
-      return url.origin === location.origin && url.pathname === this.boardPath;
+      return ["https://www.okoun.cz", "https://kapybara.okoun.cz"].includes(url.origin) && (url.pathname === this.boardPath || url.pathname.startsWith(`${this.boardPath}/`));
+    },
+    countingModes(posts) {
+      const modes = [
+        { id: "replyPosts", label: "P\u0159\xEDsp\u011Bvky !" }
+      ];
+      if (posts.some((post) => post.platform === "kapybara")) {
+        modes.push({ id: "nativeReactions", label: "Nativn\xED reakce Kapybary" });
+      }
+      return modes;
     },
     sourcePosts(posts) {
       return posts.filter((post) => post.imageUrls.length);
@@ -63,21 +73,44 @@
       );
       return { source, end, candidates, unassigned };
     },
-    scoreCandidate(candidate, { excludedReactionIds }) {
+    scoreCandidate(candidate, { excludedReactionIds, countingMode = "replyPosts" }) {
+      const nativeReactions = candidate.nativeReactions || [];
+      const nativeReactionCount = nativeReactions.reduce(
+        (sum, reaction) => sum + reaction.count,
+        0
+      );
+      if (countingMode === "nativeReactions") {
+        return {
+          uniqueReactors: null,
+          reactionPosts: 0,
+          excludedPosts: 0,
+          ignoredReplyPosts: candidate.reactions.length,
+          nativeReactionCount,
+          nativeReactions,
+          voteSource: "nativeReactions",
+          points: nativeReactionCount
+        };
+      }
       const includedReactions = candidate.reactions.filter(
         (reaction) => !excludedReactionIds.has(reaction.id)
       );
-      const reactingAuthors = new Set(includedReactions.map((reaction) => reaction.author));
+      const reactingAuthors = new Set(
+        includedReactions.map((reaction) => reaction.authorKey || reaction.author.toLowerCase())
+      );
       return {
         uniqueReactors: reactingAuthors.size,
         reactionPosts: includedReactions.length,
         excludedPosts: candidate.reactions.length - includedReactions.length,
+        ignoredReplyPosts: 0,
+        nativeReactionCount,
+        nativeReactions,
+        voteSource: "replyPosts",
         points: reactingAuthors.size
       };
     },
     rankCandidates(round, context) {
       return round.candidates.map((candidate) => ({ candidate, stats: this.scoreCandidate(candidate, context) })).sort(
-        (a, b) => b.stats.points - a.stats.points || b.stats.uniqueReactors - a.stats.uniqueReactors || a.candidate.id - b.candidate.id
+        (a, b) => b.stats.points - a.stats.points || (b.stats.uniqueReactors ?? 0) - (a.stats.uniqueReactors ?? 0) || a.candidate.id - b.candidate.id
       );
     },
     formatResult(winner) {
@@ -89,7 +122,7 @@
       const names = authors.length ? `${authors.join(", ")} a ${last}` : last;
       return `Rem\xEDza mezi ${names}. Gratulace!`;
     },
-    sourceExplanation: "Klikni na zdrojov\xFD obr\xE1zek (m\u016F\u017Ee b\xFDt i v odpov\u011Bdi). Po potvrzen\xED se v\u0161echny pozd\u011Bj\u0161\xED samostatn\xE9 obr\xE1zkov\xE9 p\u0159\xEDsp\u011Bvky vezmou jako sout\u011B\u017En\xED n\xE1vrhy a jejich vl\xE1knov\xE9 odpov\u011Bdi jako reakce."
+    sourceExplanation: "Klikni na zdrojov\xFD obr\xE1zek (m\u016F\u017Ee b\xFDt i v odpov\u011Bdi). Po potvrzen\xED se v\u0161echny pozd\u011Bj\u0161\xED samostatn\xE9 obr\xE1zkov\xE9 p\u0159\xEDsp\u011Bvky vezmou jako sout\u011B\u017En\xED n\xE1vrhy. Na Kapyba\u0159e si pak zvol\xED\u0161 bu\u010F odpov\u011Bdi !, nebo nativn\xED reakce; oba zp\u016Fsoby se nikdy nes\u010D\xEDtaj\xED dohromady."
   };
   var clubPlugins = [vymysliVtipnyTextik];
 
@@ -276,6 +309,13 @@
     const match = String(value || "").match(/(?:article-|contextId=)(\d+)/i) || String(value || "").match(/\b(\d{6,})\b/);
     return match ? Number(match[1]) : null;
   }
+  function pageOrigin(pageUrl) {
+    try {
+      return new URL(pageUrl, location.href).origin;
+    } catch {
+      return location.origin;
+    }
+  }
   function absoluteUrl(value, base = location.href) {
     try {
       return new URL(value, base).href;
@@ -299,7 +339,7 @@
       return "";
     }
   }
-  function parseDocument(doc, pageUrl, plugin) {
+  function parseClassicDocument(doc, pageUrl, plugin) {
     return Array.from(doc.querySelectorAll("div.item[id^='article-']")).map((item) => {
       const content = item.querySelector(".content") || item;
       const parentLink = item.querySelector(".actions a.prev");
@@ -317,12 +357,85 @@
         parentLabel: textOf(parentLink),
         text: textOf(content),
         imageUrls,
+        nativeReactions: [],
+        platform: "classic",
         url: safeBoardUrl(absoluteUrl(permalink?.getAttribute("href"), pageUrl), plugin) || `${location.origin}${plugin.boardPath}#article-${id}`,
         pageUrl
       };
     }).filter((post) => post.id);
   }
+  var REACTION_KEYS = {
+    FISH: "fish",
+    PLUS1: "plus1",
+    BANG: "bang",
+    BANG3: "bang3",
+    PALM: "facepalm"
+  };
+  var REACTION_TITLES = {
+    "D\xE1t rybu": "fish",
+    "Ba\u017Eedy\u0165\u017Eejo": "plus1",
+    "Zaujalo m\u011B": "bang",
+    "Par\xE1da": "bang3",
+    Facepalm: "facepalm"
+  };
+  function parseNativeReactions(item) {
+    const group = item.querySelector("[role='group'][aria-label='Po\u010Dty reakc\xED']");
+    if (!group) return [];
+    return Array.from(group.querySelectorAll("button")).map((button) => {
+      const label = button.getAttribute("title") || "Reakce";
+      const glyph = button.querySelector("svg[data-glyph]")?.getAttribute("data-glyph") || "";
+      const ariaLabel = button.getAttribute("aria-label") || "";
+      const countMatch = ariaLabel.match(/,\s*(\d+)\s*$/);
+      const count = countMatch ? Number(countMatch[1]) : 0;
+      return {
+        key: REACTION_KEYS[glyph] || REACTION_TITLES[label] || "other",
+        label,
+        glyph,
+        count
+      };
+    }).filter((reaction) => reaction.count > 0);
+  }
+  function parseKapybaraDocument(doc, pageUrl, plugin) {
+    const origin = pageOrigin(pageUrl);
+    return Array.from(doc.querySelectorAll("article.post[data-post-id]")).map((item) => {
+      const content = item.querySelector(".body") || item;
+      const parentLink = item.querySelector(".reply-ref a.reply-link, .reply-ref a[href*='/c/']");
+      const date = item.querySelector(".meta button.date, .meta time");
+      const id = postIdFrom(item.getAttribute("data-post-id") || item.id);
+      const author = textOf(item.querySelector(".author")) || "nezn\xE1m\xFD u\u017Eivatel";
+      const imageUrls = Array.from(content.querySelectorAll("img[src]")).map((image) => safeImageUrl(image.getAttribute("src") || image.src, pageUrl)).filter(Boolean);
+      return {
+        id,
+        author,
+        authorKey: author.toLowerCase(),
+        avatarUrl: safeImageUrl(item.querySelector(".avatar img")?.src, pageUrl),
+        timestamp: date?.getAttribute("aria-label") || date?.getAttribute("title") || date?.getAttribute("datetime") || textOf(date),
+        parentId: postIdFrom(parentLink?.getAttribute("href")),
+        parentLabel: textOf(parentLink),
+        text: textOf(content),
+        imageUrls,
+        nativeReactions: parseNativeReactions(item),
+        platform: "kapybara",
+        url: safeBoardUrl(`${origin}${plugin.boardPath}/c/${id}#p${id}`, plugin),
+        pageUrl
+      };
+    }).filter((post) => post.id);
+  }
+  function isKapybaraPage(pageUrl) {
+    try {
+      return new URL(pageUrl, location.href).hostname === "kapybara.okoun.cz";
+    } catch {
+      return false;
+    }
+  }
+  function parseDocument(doc, pageUrl, plugin) {
+    return isKapybaraPage(pageUrl) ? parseKapybaraDocument(doc, pageUrl, plugin) : parseClassicDocument(doc, pageUrl, plugin);
+  }
   function olderUrlFrom(doc, pageUrl, plugin) {
+    if (isKapybaraPage(pageUrl)) {
+      const href2 = doc.querySelector("nav.pager[aria-label='Str\xE1nkov\xE1n\xED p\u0159\xEDsp\u011Bvk\u016F'] a[aria-label^='Star\u0161\xED p\u0159\xEDsp\u011Bvky']")?.getAttribute("href");
+      return safeBoardUrl(absoluteUrl(href2, pageUrl), plugin);
+    }
     const href = doc.querySelector("li.older a, a.older")?.getAttribute("href");
     return safeBoardUrl(absoluteUrl(href, pageUrl), plugin);
   }
@@ -356,6 +469,7 @@
       endManuallyChanged: false,
       manualWinnerId: null,
       tieAccepted: false,
+      countingMode: "replyPosts",
       excludedReactionIds: /* @__PURE__ */ new Set(),
       olderUrl: "",
       loadedUrls: /* @__PURE__ */ new Set(),
@@ -403,7 +517,13 @@
     const winnerAnnouncementsAfter = (sourceId) => plugin.roundEndsAfter(state.posts, sourceId);
     const suggestedEndId = (sourceId) => plugin.suggestedEndId(state.posts, sourceId);
     const buildRound = (sourceId = state.sourceId) => plugin.buildRound({ posts: state.posts, sourceId, endId: state.endId });
-    const rankedCandidates = (round) => plugin.rankCandidates(round, { excludedReactionIds: state.excludedReactionIds });
+    const rankedCandidates = (round) => plugin.rankCandidates(round, {
+      excludedReactionIds: state.excludedReactionIds,
+      countingMode: state.countingMode
+    });
+    const countingModes = () => plugin.countingModes?.(state.posts) || [
+      { id: "replyPosts", label: "P\u0159\xEDsp\u011Bvky !" }
+    ];
     const voteCountLabel = (count) => `${count} ${count === 1 ? "hlas" : count >= 2 && count <= 4 ? "hlasy" : "hlas\u016F"}`;
     function makeButton(label, onClick, className = "") {
       const node = document.createElement("button");
@@ -509,6 +629,33 @@
       wrapper.append(label, select);
       return wrapper;
     }
+    function makeCountingModeSelector(onChange) {
+      const modes = countingModes();
+      if (modes.length < 2) return document.createDocumentFragment();
+      const wrapper = document.createElement("label");
+      wrapper.dataset.pocitatkoCountingMode = "";
+      const label = document.createElement("strong");
+      label.textContent = "Zp\u016Fsob po\u010D\xEDt\xE1n\xED";
+      const select = document.createElement("select");
+      modes.forEach((mode) => {
+        const option = document.createElement("option");
+        option.value = mode.id;
+        option.textContent = mode.label;
+        select.append(option);
+      });
+      if (!Array.from(select.options).some((option) => option.value === state.countingMode)) {
+        state.countingMode = "replyPosts";
+      }
+      select.value = state.countingMode;
+      select.addEventListener("change", () => {
+        state.countingMode = select.value;
+        state.manualWinnerId = null;
+        state.tieAccepted = false;
+        onChange();
+      });
+      wrapper.append(label, select);
+      return wrapper;
+    }
     function renderSourceChooser() {
       const { body, overlay } = overlayParts();
       if (!body || !overlay) return;
@@ -576,6 +723,7 @@
         confirm.append(
           summary,
           makeEndSelector(selected),
+          makeCountingModeSelector(renderSourceChooser),
           makeButton("Potvrdit a spo\u010D\xEDtat", renderRound, "primary")
         );
         body.append(confirm);
@@ -601,8 +749,9 @@
       const { isTie, leaders, selectedWinner, topPoints } = winner;
       const acceptedTie = isTie && state.tieAccepted && !winner.manualWinner;
       const leaderIds = new Set(leaders.map(({ candidate }) => candidate.id));
-      const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.reactionPosts, 0);
+      const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.points, 0);
       const excludedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.excludedPosts, 0);
+      const ignoredReplyCount = ranked.reduce((sum, entry) => sum + entry.stats.ignoredReplyPosts, 0);
       const copyButton = makeButton(
         acceptedTie ? "Kop\xEDrovat rem\xEDzu" : isTie && !winner.manualWinner ? "Vyber v\xFDsledek rem\xEDzy" : "Kop\xEDrovat v\xFDsledek",
         () => {
@@ -638,7 +787,7 @@
       ];
       const tieStatus = isTie ? ` \xB7 REM\xCDZA ${leaders.length}\xD7 ${voteCountLabel(topPoints)}` : "";
       setHeader(
-        `${round.candidates.length} sout\u011B\u017E\xEDc\xEDch \xB7 ${includedReactionCount} hlas\u016F${excludedReactionCount ? ` \xB7 ${excludedReactionCount} vy\u0159azeno` : ""}${tieStatus}`,
+        `${round.candidates.length} sout\u011B\u017E\xEDc\xEDch \xB7 ${includedReactionCount} hlas\u016F${excludedReactionCount ? ` \xB7 ${excludedReactionCount} vy\u0159azeno` : ""}${ignoredReplyCount ? ` \xB7 ${ignoredReplyCount} odpov\u011Bd\xED nezapo\u010D\xEDt\xE1no` : ""}${tieStatus}`,
         buttons
       );
       body.replaceChildren();
@@ -652,6 +801,13 @@
       const promptMeta = document.createElement("p");
       promptMeta.textContent = `${round.source.author} \xB7 ${round.source.timestamp}`;
       prompt.append(promptMeta, makePostLink(round.source));
+      prompt.append(makeCountingModeSelector(() => renderRound()));
+      if (state.countingMode === "nativeReactions") {
+        const modeWarning = document.createElement("p");
+        modeWarning.dataset.pocitatkoWarning = "";
+        modeWarning.textContent = "Po\u010D\xEDtaj\xED se pouze nativn\xED reakce Kapybary. Kapybara zat\xEDm neukazuje jejich autory, proto nelze ov\u011B\u0159it duplicity; odpov\u011Bdi ! se v tomto re\u017Eimu nep\u0159i\u010D\xEDtaj\xED.";
+        prompt.append(modeWarning);
+      }
       const endMeta = document.createElement("p");
       endMeta.dataset.pocitatkoMuted = "";
       endMeta.textContent = round.end ? `Konec ${state.endManuallyChanged ? "(ru\u010Dn\u011B)" : "(n\xE1vrh)"}: ${round.end.timestamp} \u2014 ${round.end.text}` : "Konec: aktu\xE1ln\xED stav bez v\xEDt\u011Bzn\xE9ho ozn\xE1men\xED";
@@ -703,9 +859,11 @@
         score.dataset.pocitatkoScore = "";
         [
           voteCountLabel(stats.points),
-          `${stats.uniqueReactors} lid\xED`,
-          `${stats.reactionPosts} reakc\xED`,
+          stats.voteSource === "nativeReactions" ? "nativn\xED reakce Kapybary" : `${stats.uniqueReactors} lid\xED`,
+          stats.voteSource === "replyPosts" ? `${stats.reactionPosts} odpov\u011Bd\xED` : "",
+          stats.voteSource === "nativeReactions" ? "auto\u0159i reakc\xED nejsou dostupn\xED" : "",
           stats.excludedPosts ? `${stats.excludedPosts} vy\u0159azeno` : "",
+          stats.ignoredReplyPosts ? `${stats.ignoredReplyPosts} odpov\u011Bd\xED nezapo\u010D\xEDt\xE1no` : "",
           isTie && leaderIds.has(candidate.id) ? acceptedTie ? "spoluv\xEDt\u011Bz" : "rem\xEDza o 1. m\xEDsto" : index === 0 ? "n\xE1vrh Poci\u0165\xE1tka" : ""
         ].filter(Boolean).forEach((label) => {
           const chip = document.createElement("span");
@@ -713,6 +871,14 @@
           chip.textContent = label;
           score.append(chip);
         });
+        if (stats.voteSource === "nativeReactions") {
+          stats.nativeReactions.forEach((reaction) => {
+            const chip = document.createElement("span");
+            chip.dataset.pocitatkoChip = "";
+            chip.textContent = `${reaction.label}: ${reaction.count}`;
+            score.append(chip);
+          });
+        }
         card.append(score);
         const controls = document.createElement("div");
         controls.dataset.pocitatkoCandidateControls = "";
@@ -730,32 +896,72 @@
           makePostLink(candidate)
         );
         card.append(controls);
-        const details = document.createElement("details");
-        details.open = true;
-        const summary = document.createElement("summary");
-        summary.textContent = `V\u0161echny reakce (${candidate.reactions.length})`;
-        const list = document.createElement("ul");
-        list.dataset.pocitatkoReactions = "";
-        candidate.reactions.forEach((reaction) => {
-          const item = document.createElement("li");
-          const excluded = state.excludedReactionIds.has(reaction.id);
-          if (excluded) item.classList.add("excluded");
-          const text = document.createElement("span");
-          const who = document.createElement("strong");
-          who.textContent = `${reaction.author}: `;
-          text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
-          const toggle = makeButton(excluded ? "Vr\xE1tit hlas" : "Nezapo\u010D\xEDtat", () => {
-            const scrollTop = body.scrollTop;
-            state.tieAccepted = false;
-            if (excluded) state.excludedReactionIds.delete(reaction.id);
-            else state.excludedReactionIds.add(reaction.id);
-            renderRound({ scrollTop });
+        if (stats.voteSource === "nativeReactions") {
+          const nativeDetails = document.createElement("details");
+          nativeDetails.open = true;
+          const nativeSummary = document.createElement("summary");
+          nativeSummary.textContent = `Nativn\xED reakce (${stats.nativeReactionCount})`;
+          const nativeList = document.createElement("ul");
+          nativeList.dataset.pocitatkoNativeReactions = "";
+          stats.nativeReactions.forEach((reaction) => {
+            const item = document.createElement("li");
+            item.textContent = `${reaction.label}: ${reaction.count}`;
+            nativeList.append(item);
           });
-          item.append(text, toggle);
-          list.append(item);
-        });
-        details.append(summary, list);
-        card.append(details);
+          if (!stats.nativeReactions.length) {
+            const item = document.createElement("li");
+            item.textContent = "Bez nativn\xEDch reakc\xED";
+            nativeList.append(item);
+          }
+          nativeDetails.append(nativeSummary, nativeList);
+          card.append(nativeDetails);
+          if (candidate.reactions.length) {
+            const ignoredDetails = document.createElement("details");
+            const ignoredSummary = document.createElement("summary");
+            ignoredSummary.textContent = `Odpov\u011Bdi nezapo\u010D\xEDtan\xE9 v tomto re\u017Eimu (${candidate.reactions.length})`;
+            const ignoredList = document.createElement("ul");
+            ignoredList.dataset.pocitatkoReactions = "";
+            candidate.reactions.forEach((reaction) => {
+              const item = document.createElement("li");
+              item.classList.add("excluded");
+              const text = document.createElement("span");
+              const who = document.createElement("strong");
+              who.textContent = `${reaction.author}: `;
+              text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
+              item.append(text);
+              ignoredList.append(item);
+            });
+            ignoredDetails.append(ignoredSummary, ignoredList);
+            card.append(ignoredDetails);
+          }
+        } else {
+          const details = document.createElement("details");
+          details.open = true;
+          const summary = document.createElement("summary");
+          summary.textContent = `V\u0161echny odpov\u011Bdi (${candidate.reactions.length})`;
+          const list = document.createElement("ul");
+          list.dataset.pocitatkoReactions = "";
+          candidate.reactions.forEach((reaction) => {
+            const item = document.createElement("li");
+            const excluded = state.excludedReactionIds.has(reaction.id);
+            if (excluded) item.classList.add("excluded");
+            const text = document.createElement("span");
+            const who = document.createElement("strong");
+            who.textContent = `${reaction.author}: `;
+            text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
+            const toggle = makeButton(excluded ? "Vr\xE1tit hlas" : "Nezapo\u010D\xEDtat", () => {
+              const scrollTop = body.scrollTop;
+              state.tieAccepted = false;
+              if (excluded) state.excludedReactionIds.delete(reaction.id);
+              else state.excludedReactionIds.add(reaction.id);
+              renderRound({ scrollTop });
+            });
+            item.append(text, toggle);
+            list.append(item);
+          });
+          details.append(summary, list);
+          card.append(details);
+        }
         candidates.append(card);
       });
       layout.append(prompt, candidates);
@@ -776,6 +982,7 @@
         endManuallyChanged: false,
         manualWinnerId: null,
         tieAccepted: false,
+        countingMode: "replyPosts",
         excludedReactionIds: /* @__PURE__ */ new Set(),
         olderUrl: "",
         loadedUrls: /* @__PURE__ */ new Set(),
@@ -827,7 +1034,9 @@
     #${ids.overlay} [data-pocitatko-confirm] { position: sticky; bottom: 0; display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 12px; max-width: 900px; margin: 16px auto 0; padding: 10px; border: 1px solid #bfa34f; border-radius: 12px; background: #fff8d9; box-shadow: 0 6px 24px #0003; }
     #${ids.overlay} [data-pocitatko-confirm] img { width: 92px; height: 72px; border-radius: 7px; object-fit: contain; background: #e8e2d8; }
     #${ids.overlay} [data-pocitatko-boundary] { grid-column: 2 / -1; display: grid; gap: 4px; }
-    #${ids.overlay} [data-pocitatko-boundary] select { max-width: 100%; padding: 7px; border: 1px solid #aaa093; border-radius: 7px; background: #fffdf8; font: inherit; }
+    #${ids.overlay} [data-pocitatko-counting-mode] { display: grid; gap: 4px; margin: 10px 0; }
+    #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 2 / -1; margin: 0; }
+    #${ids.overlay} [data-pocitatko-boundary] select, #${ids.overlay} [data-pocitatko-counting-mode] select { max-width: 100%; padding: 7px; border: 1px solid #aaa093; border-radius: 7px; background: #fffdf8; color: inherit; font: inherit; }
     #${ids.overlay} [data-pocitatko-round] { display: grid; grid-template-columns: minmax(220px, .6fr) minmax(340px, 1.4fr); min-height: 100%; }
     #${ids.overlay} [data-pocitatko-prompt] { position: sticky; top: 0; align-self: start; padding: 14px; }
     #${ids.overlay} [data-pocitatko-prompt] > img { display: block; max-width: 100%; max-height: 56vh; margin: 10px auto; border-radius: 9px; object-fit: contain; background: #e8e2d8; }
@@ -843,8 +1052,10 @@
     #${ids.overlay} [data-pocitatko-chip] { padding: 3px 8px; border-radius: 999px; background: #eee8dc; font-size: 12px; }
     #${ids.overlay} [data-pocitatko-candidate-controls] { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
     #${ids.overlay} [data-pocitatko-tie] { margin: 12px 0 0; padding: 11px 12px; border: 2px solid #bb6b16; border-radius: 9px; background: #fff0d3; color: #613200; font-weight: 700; }
+    #${ids.overlay} [data-pocitatko-warning] { padding: 9px 10px; border-left: 4px solid #bb6b16; background: #fff0d3; color: #613200; }
     #${ids.overlay} details { margin-top: 8px; }
     #${ids.overlay} [data-pocitatko-reactions] { margin: 7px 0 0; padding-left: 21px; }
+    #${ids.overlay} [data-pocitatko-native-reactions] { margin: 7px 0 0; padding-left: 21px; }
     #${ids.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }
     #${ids.overlay} [data-pocitatko-reactions] li.excluded { opacity: .55; text-decoration: line-through; }
     #${ids.overlay} [data-pocitatko-reactions] button { padding: 3px 7px; font-size: 12px; text-decoration: none; }
@@ -856,6 +1067,7 @@
       #${ids.overlay} [data-pocitatko-confirm] { grid-template-columns: 72px 1fr; }
       #${ids.overlay} [data-pocitatko-confirm] img { width: 72px; height: 62px; }
       #${ids.overlay} [data-pocitatko-boundary] { grid-column: 1 / -1; }
+      #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-confirm] button { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-round] { display: block; }
       #${ids.overlay} [data-pocitatko-prompt] { position: static; }

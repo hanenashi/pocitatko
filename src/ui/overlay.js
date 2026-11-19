@@ -9,6 +9,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     endManuallyChanged: false,
     manualWinnerId: null,
     tieAccepted: false,
+    countingMode: "replyPosts",
     excludedReactionIds: new Set(),
     olderUrl: "",
     loadedUrls: new Set(),
@@ -62,7 +63,13 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
   const buildRound = (sourceId = state.sourceId) =>
     plugin.buildRound({ posts: state.posts, sourceId, endId: state.endId });
   const rankedCandidates = (round) =>
-    plugin.rankCandidates(round, { excludedReactionIds: state.excludedReactionIds });
+    plugin.rankCandidates(round, {
+      excludedReactionIds: state.excludedReactionIds,
+      countingMode: state.countingMode,
+    });
+  const countingModes = () => plugin.countingModes?.(state.posts) || [
+    { id: "replyPosts", label: "Příspěvky !" },
+  ];
   const voteCountLabel = (count) =>
     `${count} ${count === 1 ? "hlas" : count >= 2 && count <= 4 ? "hlasy" : "hlasů"}`;
 
@@ -179,6 +186,34 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     return wrapper;
   }
 
+  function makeCountingModeSelector(onChange) {
+    const modes = countingModes();
+    if (modes.length < 2) return document.createDocumentFragment();
+    const wrapper = document.createElement("label");
+    wrapper.dataset.pocitatkoCountingMode = "";
+    const label = document.createElement("strong");
+    label.textContent = "Způsob počítání";
+    const select = document.createElement("select");
+    modes.forEach((mode) => {
+      const option = document.createElement("option");
+      option.value = mode.id;
+      option.textContent = mode.label;
+      select.append(option);
+    });
+    if (!Array.from(select.options).some((option) => option.value === state.countingMode)) {
+      state.countingMode = "replyPosts";
+    }
+    select.value = state.countingMode;
+    select.addEventListener("change", () => {
+      state.countingMode = select.value;
+      state.manualWinnerId = null;
+      state.tieAccepted = false;
+      onChange();
+    });
+    wrapper.append(label, select);
+    return wrapper;
+  }
+
   function renderSourceChooser() {
     const { body, overlay } = overlayParts();
     if (!body || !overlay) return;
@@ -250,6 +285,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       confirm.append(
         summary,
         makeEndSelector(selected),
+        makeCountingModeSelector(renderSourceChooser),
         makeButton("Potvrdit a spočítat", renderRound, "primary"),
       );
       body.append(confirm);
@@ -277,8 +313,9 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     const { isTie, leaders, selectedWinner, topPoints } = winner;
     const acceptedTie = isTie && state.tieAccepted && !winner.manualWinner;
     const leaderIds = new Set(leaders.map(({ candidate }) => candidate.id));
-    const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.reactionPosts, 0);
+    const includedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.points, 0);
     const excludedReactionCount = ranked.reduce((sum, entry) => sum + entry.stats.excludedPosts, 0);
+    const ignoredReplyCount = ranked.reduce((sum, entry) => sum + entry.stats.ignoredReplyPosts, 0);
 
     const copyButton = makeButton(
       acceptedTie
@@ -318,7 +355,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     ];
     const tieStatus = isTie ? ` · REMÍZA ${leaders.length}× ${voteCountLabel(topPoints)}` : "";
     setHeader(
-      `${round.candidates.length} soutěžících · ${includedReactionCount} hlasů${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}${tieStatus}`,
+      `${round.candidates.length} soutěžících · ${includedReactionCount} hlasů${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}${ignoredReplyCount ? ` · ${ignoredReplyCount} odpovědí nezapočítáno` : ""}${tieStatus}`,
       buttons,
     );
     body.replaceChildren();
@@ -333,6 +370,14 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     const promptMeta = document.createElement("p");
     promptMeta.textContent = `${round.source.author} · ${round.source.timestamp}`;
     prompt.append(promptMeta, makePostLink(round.source));
+    prompt.append(makeCountingModeSelector(() => renderRound()));
+    if (state.countingMode === "nativeReactions") {
+      const modeWarning = document.createElement("p");
+      modeWarning.dataset.pocitatkoWarning = "";
+      modeWarning.textContent =
+        "Počítají se pouze nativní reakce Kapybary. Kapybara zatím neukazuje jejich autory, proto nelze ověřit duplicity; odpovědi ! se v tomto režimu nepřičítají.";
+      prompt.append(modeWarning);
+    }
     const endMeta = document.createElement("p");
     endMeta.dataset.pocitatkoMuted = "";
     endMeta.textContent = round.end
@@ -395,9 +440,13 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       score.dataset.pocitatkoScore = "";
       [
         voteCountLabel(stats.points),
-        `${stats.uniqueReactors} lidí`,
-        `${stats.reactionPosts} reakcí`,
+        stats.voteSource === "nativeReactions"
+          ? "nativní reakce Kapybary"
+          : `${stats.uniqueReactors} lidí`,
+        stats.voteSource === "replyPosts" ? `${stats.reactionPosts} odpovědí` : "",
+        stats.voteSource === "nativeReactions" ? "autoři reakcí nejsou dostupní" : "",
         stats.excludedPosts ? `${stats.excludedPosts} vyřazeno` : "",
+        stats.ignoredReplyPosts ? `${stats.ignoredReplyPosts} odpovědí nezapočítáno` : "",
         isTie && leaderIds.has(candidate.id)
           ? acceptedTie ? "spoluvítěz" : "remíza o 1. místo"
           : index === 0 ? "návrh Pociťátka" : "",
@@ -407,6 +456,14 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
         chip.textContent = label;
         score.append(chip);
       });
+      if (stats.voteSource === "nativeReactions") {
+        stats.nativeReactions.forEach((reaction) => {
+          const chip = document.createElement("span");
+          chip.dataset.pocitatkoChip = "";
+          chip.textContent = `${reaction.label}: ${reaction.count}`;
+          score.append(chip);
+        });
+      }
       card.append(score);
 
       const controls = document.createElement("div");
@@ -430,32 +487,73 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       );
       card.append(controls);
 
-      const details = document.createElement("details");
-      details.open = true;
-      const summary = document.createElement("summary");
-      summary.textContent = `Všechny reakce (${candidate.reactions.length})`;
-      const list = document.createElement("ul");
-      list.dataset.pocitatkoReactions = "";
-      candidate.reactions.forEach((reaction) => {
-        const item = document.createElement("li");
-        const excluded = state.excludedReactionIds.has(reaction.id);
-        if (excluded) item.classList.add("excluded");
-        const text = document.createElement("span");
-        const who = document.createElement("strong");
-        who.textContent = `${reaction.author}: `;
-        text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
-        const toggle = makeButton(excluded ? "Vrátit hlas" : "Nezapočítat", () => {
-          const scrollTop = body.scrollTop;
-          state.tieAccepted = false;
-          if (excluded) state.excludedReactionIds.delete(reaction.id);
-          else state.excludedReactionIds.add(reaction.id);
-          renderRound({ scrollTop });
+      if (stats.voteSource === "nativeReactions") {
+        const nativeDetails = document.createElement("details");
+        nativeDetails.open = true;
+        const nativeSummary = document.createElement("summary");
+        nativeSummary.textContent = `Nativní reakce (${stats.nativeReactionCount})`;
+        const nativeList = document.createElement("ul");
+        nativeList.dataset.pocitatkoNativeReactions = "";
+        stats.nativeReactions.forEach((reaction) => {
+          const item = document.createElement("li");
+          item.textContent = `${reaction.label}: ${reaction.count}`;
+          nativeList.append(item);
         });
-        item.append(text, toggle);
-        list.append(item);
-      });
-      details.append(summary, list);
-      card.append(details);
+        if (!stats.nativeReactions.length) {
+          const item = document.createElement("li");
+          item.textContent = "Bez nativních reakcí";
+          nativeList.append(item);
+        }
+        nativeDetails.append(nativeSummary, nativeList);
+        card.append(nativeDetails);
+
+        if (candidate.reactions.length) {
+          const ignoredDetails = document.createElement("details");
+          const ignoredSummary = document.createElement("summary");
+          ignoredSummary.textContent = `Odpovědi nezapočítané v tomto režimu (${candidate.reactions.length})`;
+          const ignoredList = document.createElement("ul");
+          ignoredList.dataset.pocitatkoReactions = "";
+          candidate.reactions.forEach((reaction) => {
+            const item = document.createElement("li");
+            item.classList.add("excluded");
+            const text = document.createElement("span");
+            const who = document.createElement("strong");
+            who.textContent = `${reaction.author}: `;
+            text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
+            item.append(text);
+            ignoredList.append(item);
+          });
+          ignoredDetails.append(ignoredSummary, ignoredList);
+          card.append(ignoredDetails);
+        }
+      } else {
+        const details = document.createElement("details");
+        details.open = true;
+        const summary = document.createElement("summary");
+        summary.textContent = `Všechny odpovědi (${candidate.reactions.length})`;
+        const list = document.createElement("ul");
+        list.dataset.pocitatkoReactions = "";
+        candidate.reactions.forEach((reaction) => {
+          const item = document.createElement("li");
+          const excluded = state.excludedReactionIds.has(reaction.id);
+          if (excluded) item.classList.add("excluded");
+          const text = document.createElement("span");
+          const who = document.createElement("strong");
+          who.textContent = `${reaction.author}: `;
+          text.append(who, document.createTextNode(reaction.text || "(bez textu)"));
+          const toggle = makeButton(excluded ? "Vrátit hlas" : "Nezapočítat", () => {
+            const scrollTop = body.scrollTop;
+            state.tieAccepted = false;
+            if (excluded) state.excludedReactionIds.delete(reaction.id);
+            else state.excludedReactionIds.add(reaction.id);
+            renderRound({ scrollTop });
+          });
+          item.append(text, toggle);
+          list.append(item);
+        });
+        details.append(summary, list);
+        card.append(details);
+      }
       candidates.append(card);
     });
 
@@ -474,7 +572,8 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     addStyles(ids);
     Object.assign(state, {
       posts: [], sourceId: null, endId: null, endManuallyChanged: false,
-      manualWinnerId: null, tieAccepted: false, excludedReactionIds: new Set(), olderUrl: "",
+      manualWinnerId: null, tieAccepted: false, countingMode: "replyPosts",
+      excludedReactionIds: new Set(), olderUrl: "",
       loadedUrls: new Set(), error: "",
     });
 

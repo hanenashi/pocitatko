@@ -3,7 +3,19 @@ export const vymysliVtipnyTextik = {
   name: "Vymysli vtipný textík",
   boardPath: "/boards/vymysli_vtipny_textik",
   matchesBoardUrl(url) {
-    return url.origin === location.origin && url.pathname === this.boardPath;
+    return (
+      ["https://www.okoun.cz", "https://kapybara.okoun.cz"].includes(url.origin) &&
+      (url.pathname === this.boardPath || url.pathname.startsWith(`${this.boardPath}/`))
+    );
+  },
+  countingModes(posts) {
+    const modes = [
+      { id: "replyPosts", label: "Příspěvky !" },
+    ];
+    if (posts.some((post) => post.platform === "kapybara")) {
+      modes.push({ id: "nativeReactions", label: "Nativní reakce Kapybary" });
+    }
+    return modes;
   },
   sourcePosts(posts) {
     // A winner may reply to the previous result when posting the next assignment.
@@ -55,15 +67,39 @@ export const vymysliVtipnyTextik = {
     );
     return { source, end, candidates, unassigned };
   },
-  scoreCandidate(candidate, { excludedReactionIds }) {
+  scoreCandidate(candidate, { excludedReactionIds, countingMode = "replyPosts" }) {
+    const nativeReactions = candidate.nativeReactions || [];
+    const nativeReactionCount = nativeReactions.reduce(
+      (sum, reaction) => sum + reaction.count,
+      0,
+    );
+    if (countingMode === "nativeReactions") {
+      return {
+        uniqueReactors: null,
+        reactionPosts: 0,
+        excludedPosts: 0,
+        ignoredReplyPosts: candidate.reactions.length,
+        nativeReactionCount,
+        nativeReactions,
+        voteSource: "nativeReactions",
+        points: nativeReactionCount,
+      };
+    }
+
     const includedReactions = candidate.reactions.filter(
       (reaction) => !excludedReactionIds.has(reaction.id),
     );
-    const reactingAuthors = new Set(includedReactions.map((reaction) => reaction.author));
+    const reactingAuthors = new Set(
+      includedReactions.map((reaction) => reaction.authorKey || reaction.author.toLowerCase()),
+    );
     return {
       uniqueReactors: reactingAuthors.size,
       reactionPosts: includedReactions.length,
       excludedPosts: candidate.reactions.length - includedReactions.length,
+      ignoredReplyPosts: 0,
+      nativeReactionCount,
+      nativeReactions,
+      voteSource: "replyPosts",
       points: reactingAuthors.size,
     };
   },
@@ -73,7 +109,7 @@ export const vymysliVtipnyTextik = {
       .sort(
         (a, b) =>
           b.stats.points - a.stats.points ||
-          b.stats.uniqueReactors - a.stats.uniqueReactors ||
+          (b.stats.uniqueReactors ?? 0) - (a.stats.uniqueReactors ?? 0) ||
           a.candidate.id - b.candidate.id,
       );
   },
@@ -87,7 +123,7 @@ export const vymysliVtipnyTextik = {
     return `Remíza mezi ${names}. Gratulace!`;
   },
   sourceExplanation:
-    "Klikni na zdrojový obrázek (může být i v odpovědi). Po potvrzení se všechny pozdější samostatné obrázkové příspěvky vezmou jako soutěžní návrhy a jejich vláknové odpovědi jako reakce.",
+    "Klikni na zdrojový obrázek (může být i v odpovědi). Po potvrzení se všechny pozdější samostatné obrázkové příspěvky vezmou jako soutěžní návrhy. Na Kapybaře si pak zvolíš buď odpovědi !, nebo nativní reakce; oba způsoby se nikdy nesčítají dohromady.",
 };
 
 export const clubPlugins = [vymysliVtipnyTextik];

@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.6.3**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.7.0**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -27,10 +27,26 @@ The first plugin preserves the existing `vymysli_vtipny_textik` workflow. New
 clubs can use different rules without adding club-specific guesses to the
 shared core. Plugins are bundled into the same installable userscript for now.
 
-Version 0.6.3 is deliberately local-only. It reads the currently open public
+Version 0.7.0 is deliberately local-only. It reads the currently open public
 board page and older pages explicitly requested by the reviewer, performs the
 count in memory, and offers copyable result text. It has no account sign-in,
 remote persistence, background collection, or historical-statistics layer.
+
+## Experimental Kapybara support
+
+Version 0.7.0 also runs on the Kapybara version of `vymysli_vtipny_textik`.
+The source and round review workflow is shared with classic Okoun, while a
+round-wide selector chooses exactly one voting system:
+
+- **Příspěvky !** counts direct reply posts with one vote per author and
+  keeps the existing manual exclusion controls;
+- **Nativní reakce Kapybary** sums the visible `+1`, `!`, `!!!`, fish, and
+  facepalm counters and does not add reply posts.
+
+Reply-post mode remains the default. Kapybara does not currently expose the
+authors behind aggregate reaction counters, so native mode cannot verify
+duplicate voters. Pociťátko states this limitation in the review instead of
+presenting aggregate reactions as unique people.
 
 ## Development
 
@@ -66,6 +82,8 @@ The userscript would:
 - flag uncertain classifications instead of hiding them;
 - suggest a winner using one included vote per reacting user; `!`, `!!`,
   `!!!!!`, and mixed punctuation such as `!@&$+` have equal weight;
+- on Kapybara, let the reviewer switch the whole round between deduplicated
+  reply-post votes and aggregate native reactions without mixing the two;
 - allow manual corrections, exclusions, tie handling, and winner selection;
 - show every shared leader when the top score is tied and let the reviewer
   either choose one winner or preserve and copy the tie result;

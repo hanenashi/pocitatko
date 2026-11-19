@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.6.3
-// @description  Local read-only visual counting helper for Okoun club rounds.
+// @version      0.7.0
+// @description  Local read-only visual counting helper for classic Okoun and experimental Kapybara rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
+// @match        https://kapybara.okoun.cz/boards/vymysli_vtipny_textik*
 // @updateURL    https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
 // @downloadURL  https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js
 // @grant        GM_deleteValue

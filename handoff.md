@@ -2,9 +2,10 @@
 
 ## Current direction
 
-Pociťátko `v0.6.2` is a local, read-only counting and visual-review tool for
-Okoun competition rounds. It does not retain reviewed rounds remotely, collect
-history in the background, or contain account-management controls.
+Pociťátko `v0.7.0` is a local, read-only counting and visual-review tool for
+classic Okoun competition rounds with experimental Kapybara support. It does
+not retain reviewed rounds remotely, collect history in the background, or
+contain account-management controls.
 
 The previous experimental persistence-capable state is preserved only by the
 Git tag `v0.5.7-db-capable`. Current development should stay on the local-only
@@ -12,7 +13,8 @@ line unless the project owner explicitly changes direction.
 
 ## Repository shape
 
-- `src/core/okoun.js`: normalized Okoun post and reply parsing;
+- `src/core/okoun.js`: normalized classic Okoun/Kapybara post, reply, image,
+  paging, and native-reaction parsing;
 - `src/core/settings.js`: launcher visibility and safe-position preferences;
 - `src/plugins/`: club-specific boundaries, entries, scoring and output;
 - `src/ui/overlay.js`: source selection, visual evidence and overrides;
@@ -28,6 +30,10 @@ ready for other clubs with independently defined rules.
 - suggested and manually adjustable round end;
 - candidate images, captions and direct reactions shown together;
 - one included vote per reacting user regardless of repeated punctuation;
+- round-wide Kapybara counting-mode choice: either deduplicated reply posts or
+  aggregate native reactions, never both at once;
+- visible native reaction breakdown with an explicit warning that Kapybara
+  does not expose voter identities;
 - manual reaction exclusion/restoration and winner override;
 - explicit tie warning with either one manual winner or preserved co-winners;
 - compact two-column mobile header actions and candidate cards;

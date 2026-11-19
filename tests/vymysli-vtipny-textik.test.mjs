@@ -44,3 +44,46 @@ test("allows an image reply as the source without treating later image replies a
   assert.deepEqual(round.candidates.map((post) => post.id), [102]);
   assert.deepEqual(round.candidates[0].reactions.map((post) => post.id), [103, 104]);
 });
+
+test("offers native reactions only on Kapybara", () => {
+  assert.deepEqual(plugin.countingModes([{ platform: "classic" }]), [
+    { id: "replyPosts", label: "Příspěvky !" },
+  ]);
+  assert.deepEqual(plugin.countingModes([{ platform: "kapybara" }]).map((mode) => mode.id), [
+    "replyPosts",
+    "nativeReactions",
+  ]);
+});
+
+test("keeps reply-post and native-reaction counting mutually exclusive", () => {
+  const candidate = {
+    reactions: [
+      { id: 1, author: "Ada", authorKey: "ada" },
+      { id: 2, author: "ADA", authorKey: "ada" },
+      { id: 3, author: "Bára", authorKey: "bára" },
+    ],
+    nativeReactions: [
+      { key: "fish", label: "Dát rybu", count: 3 },
+      { key: "bang", label: "Zaujalo mě", count: 1 },
+    ],
+  };
+  const excludedReactionIds = new Set();
+
+  const replyStats = plugin.scoreCandidate(candidate, {
+    excludedReactionIds,
+    countingMode: "replyPosts",
+  });
+  assert.equal(replyStats.points, 2);
+  assert.equal(replyStats.uniqueReactors, 2);
+  assert.equal(replyStats.nativeReactionCount, 4);
+  assert.equal(replyStats.ignoredReplyPosts, 0);
+
+  const nativeStats = plugin.scoreCandidate(candidate, {
+    excludedReactionIds,
+    countingMode: "nativeReactions",
+  });
+  assert.equal(nativeStats.points, 4);
+  assert.equal(nativeStats.uniqueReactors, null);
+  assert.equal(nativeStats.reactionPosts, 0);
+  assert.equal(nativeStats.ignoredReplyPosts, 3);
+});

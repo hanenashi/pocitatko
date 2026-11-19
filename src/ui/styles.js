@@ -24,7 +24,9 @@ export function addStyles(ids) {
     #${ids.overlay} [data-pocitatko-confirm] { position: sticky; bottom: 0; display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 12px; max-width: 900px; margin: 16px auto 0; padding: 10px; border: 1px solid #bfa34f; border-radius: 12px; background: #fff8d9; box-shadow: 0 6px 24px #0003; }
     #${ids.overlay} [data-pocitatko-confirm] img { width: 92px; height: 72px; border-radius: 7px; object-fit: contain; background: #e8e2d8; }
     #${ids.overlay} [data-pocitatko-boundary] { grid-column: 2 / -1; display: grid; gap: 4px; }
-    #${ids.overlay} [data-pocitatko-boundary] select { max-width: 100%; padding: 7px; border: 1px solid #aaa093; border-radius: 7px; background: #fffdf8; font: inherit; }
+    #${ids.overlay} [data-pocitatko-counting-mode] { display: grid; gap: 4px; margin: 10px 0; }
+    #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 2 / -1; margin: 0; }
+    #${ids.overlay} [data-pocitatko-boundary] select, #${ids.overlay} [data-pocitatko-counting-mode] select { max-width: 100%; padding: 7px; border: 1px solid #aaa093; border-radius: 7px; background: #fffdf8; color: inherit; font: inherit; }
     #${ids.overlay} [data-pocitatko-round] { display: grid; grid-template-columns: minmax(220px, .6fr) minmax(340px, 1.4fr); min-height: 100%; }
     #${ids.overlay} [data-pocitatko-prompt] { position: sticky; top: 0; align-self: start; padding: 14px; }
     #${ids.overlay} [data-pocitatko-prompt] > img { display: block; max-width: 100%; max-height: 56vh; margin: 10px auto; border-radius: 9px; object-fit: contain; background: #e8e2d8; }
@@ -40,8 +42,10 @@ export function addStyles(ids) {
     #${ids.overlay} [data-pocitatko-chip] { padding: 3px 8px; border-radius: 999px; background: #eee8dc; font-size: 12px; }
     #${ids.overlay} [data-pocitatko-candidate-controls] { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
     #${ids.overlay} [data-pocitatko-tie] { margin: 12px 0 0; padding: 11px 12px; border: 2px solid #bb6b16; border-radius: 9px; background: #fff0d3; color: #613200; font-weight: 700; }
+    #${ids.overlay} [data-pocitatko-warning] { padding: 9px 10px; border-left: 4px solid #bb6b16; background: #fff0d3; color: #613200; }
     #${ids.overlay} details { margin-top: 8px; }
     #${ids.overlay} [data-pocitatko-reactions] { margin: 7px 0 0; padding-left: 21px; }
+    #${ids.overlay} [data-pocitatko-native-reactions] { margin: 7px 0 0; padding-left: 21px; }
     #${ids.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }
     #${ids.overlay} [data-pocitatko-reactions] li.excluded { opacity: .55; text-decoration: line-through; }
     #${ids.overlay} [data-pocitatko-reactions] button { padding: 3px 7px; font-size: 12px; text-decoration: none; }
@@ -53,6 +57,7 @@ export function addStyles(ids) {
       #${ids.overlay} [data-pocitatko-confirm] { grid-template-columns: 72px 1fr; }
       #${ids.overlay} [data-pocitatko-confirm] img { width: 72px; height: 62px; }
       #${ids.overlay} [data-pocitatko-boundary] { grid-column: 1 / -1; }
+      #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-confirm] button { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-round] { display: block; }
       #${ids.overlay} [data-pocitatko-prompt] { position: static; }
