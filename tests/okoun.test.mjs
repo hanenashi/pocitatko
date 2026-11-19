@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseNativeReactions } from "../src/core/okoun.js";
+import { kapybaraParent, parseNativeReactions } from "../src/core/okoun.js";
 
 function reactionButton({ title, ariaLabel, glyph = "" }) {
   return {
@@ -33,4 +33,37 @@ test("parses accessible Kapybara aggregate reaction counters", () => {
 
 test("returns no native reactions when Kapybara has no aggregate group", () => {
   assert.deepEqual(parseNativeReactions({ querySelector: () => null }), []);
+});
+
+function kapybaraPost({ threadId, parentHref = "", parentLabel = "" }) {
+  const parentLink = parentHref ? {
+    getAttribute: (name) => name === "href" ? parentHref : "",
+    textContent: parentLabel,
+  } : null;
+  return {
+    getAttribute: (name) => name === "data-thread-id" ? threadId : "",
+    querySelector: () => parentLink,
+  };
+}
+
+test("prefers Kapybara's explicit direct parent link", () => {
+  assert.deepEqual(
+    kapybaraParent(kapybaraPost({
+      threadId: "100000",
+      parentHref: "/boards/demo/c/100004#p100004",
+      parentLabel: "Reakce na Ada",
+    }), 100005),
+    { id: 100004, label: "Reakce na Ada", inferredFromThread: false },
+  );
+});
+
+test("falls back to Kapybara's thread root when compact layouts omit reply links", () => {
+  assert.deepEqual(
+    kapybaraParent(kapybaraPost({ threadId: "100000" }), 100005),
+    { id: 100000, label: "Vlákno #100000", inferredFromThread: true },
+  );
+  assert.deepEqual(
+    kapybaraParent(kapybaraPost({ threadId: "100005" }), 100005),
+    { id: null, label: "", inferredFromThread: false },
+  );
 });

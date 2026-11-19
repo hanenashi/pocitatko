@@ -2,7 +2,7 @@
 
 ## Current direction
 
-Pociťátko `v0.7.0` is a local, read-only counting and visual-review tool for
+Pociťátko `v0.7.1` is a local, read-only counting and visual-review tool for
 classic Okoun competition rounds with experimental Kapybara support. It does
 not retain reviewed rounds remotely, collect history in the background, or
 contain account-management controls.

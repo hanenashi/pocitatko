@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.7.0
+// @version      0.7.1
 // @description  Local read-only visual counting helper for classic Okoun and experimental Kapybara rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -18,7 +18,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.7.0";
+  var VERSION = "0.7.1";
   var IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -395,13 +395,35 @@
       };
     }).filter((reaction) => reaction.count > 0);
   }
+  function kapybaraParent(item, postId) {
+    const parentLink = item.querySelector(
+      ".reply-ref a.reply-link, .reply-ref a[href*='/c/']"
+    );
+    const explicitParentId = postIdFrom(parentLink?.getAttribute("href"));
+    if (explicitParentId) {
+      return {
+        id: explicitParentId,
+        label: textOf(parentLink),
+        inferredFromThread: false
+      };
+    }
+    const threadId = postIdFrom(item.getAttribute("data-thread-id"));
+    if (threadId && threadId !== postId) {
+      return {
+        id: threadId,
+        label: `Vl\xE1kno #${threadId}`,
+        inferredFromThread: true
+      };
+    }
+    return { id: null, label: "", inferredFromThread: false };
+  }
   function parseKapybaraDocument(doc, pageUrl, plugin) {
     const origin = pageOrigin(pageUrl);
     return Array.from(doc.querySelectorAll("article.post[data-post-id]")).map((item) => {
       const content = item.querySelector(".body") || item;
-      const parentLink = item.querySelector(".reply-ref a.reply-link, .reply-ref a[href*='/c/']");
       const date = item.querySelector(".meta button.date, .meta time");
       const id = postIdFrom(item.getAttribute("data-post-id") || item.id);
+      const parent = kapybaraParent(item, id);
       const author = textOf(item.querySelector(".author")) || "nezn\xE1m\xFD u\u017Eivatel";
       const imageUrls = Array.from(content.querySelectorAll("img[src]")).map((image) => safeImageUrl(image.getAttribute("src") || image.src, pageUrl)).filter(Boolean);
       return {
@@ -410,8 +432,9 @@
         authorKey: author.toLowerCase(),
         avatarUrl: safeImageUrl(item.querySelector(".avatar img")?.src, pageUrl),
         timestamp: date?.getAttribute("aria-label") || date?.getAttribute("title") || date?.getAttribute("datetime") || textOf(date),
-        parentId: postIdFrom(parentLink?.getAttribute("href")),
-        parentLabel: textOf(parentLink),
+        parentId: parent.id,
+        parentLabel: parent.label,
+        parentInferredFromThread: parent.inferredFromThread,
         text: textOf(content),
         imageUrls,
         nativeReactions: parseNativeReactions(item),
