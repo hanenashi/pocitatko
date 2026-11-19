@@ -2,7 +2,7 @@
 
 ## Current direction
 
-Pociťátko `v0.7.2` is a local, read-only counting and visual-review tool for
+Pociťátko `v0.7.3` is a local, read-only counting and visual-review tool for
 classic Okoun competition rounds with experimental Kapybara support. It does
 not retain reviewed rounds remotely, collect history in the background, or
 contain account-management controls.
@@ -35,6 +35,7 @@ ready for other clubs with independently defined rules.
 - visible native reaction breakdown with an explicit warning that Kapybara
   does not expose voter identities;
 - optional inclusion of image replies as visibly marked competition entries;
+- expandable evidence for replies whose targets are outside the selected entries;
 - manual reaction exclusion/restoration and winner override;
 - explicit tie warning with either one manual winner or preserved co-winners;
 - compact two-column mobile header actions and candidate cards;

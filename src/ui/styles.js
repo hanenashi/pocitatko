@@ -47,6 +47,11 @@ export function addStyles(ids) {
     #${ids.overlay} [data-pocitatko-tie] { margin: 12px 0 0; padding: 11px 12px; border: 2px solid #bb6b16; border-radius: 9px; background: #fff0d3; color: #613200; font-weight: 700; }
     #${ids.overlay} [data-pocitatko-warning] { padding: 9px 10px; border-left: 4px solid #bb6b16; background: #fff0d3; color: #613200; }
     #${ids.overlay} details { margin-top: 8px; }
+    #${ids.overlay} [data-pocitatko-unassigned] { padding: 8px 10px; border: 1px solid #c8bfae; border-radius: 8px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-unassigned] > summary { cursor: pointer; font-weight: 700; }
+    #${ids.overlay} [data-pocitatko-unassigned] > ul { margin: 8px 0 0; padding-left: 20px; }
+    #${ids.overlay} [data-pocitatko-unassigned] li { margin: 8px 0; overflow-wrap: anywhere; }
+    #${ids.overlay} [data-pocitatko-unassigned-links] { margin-top: 2px; color: #6d665d; font-size: 12px; }
     #${ids.overlay} [data-pocitatko-reactions] { margin: 7px 0 0; padding-left: 21px; }
     #${ids.overlay} [data-pocitatko-native-reactions] { margin: 7px 0 0; padding-left: 21px; }
     #${ids.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }

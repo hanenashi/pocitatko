@@ -431,10 +431,40 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
       prompt.append(tieWarning);
     }
     if (round.unassigned.length) {
-      const warning = document.createElement("p");
-      warning.dataset.pocitatkoMuted = "";
-      warning.textContent = `${round.unassigned.length} odpovědí míří na příspěvky mimo načtený výběr; nejsou potichu započítané.`;
-      prompt.append(warning);
+      const details = document.createElement("details");
+      details.dataset.pocitatkoUnassigned = "";
+      const summary = document.createElement("summary");
+      summary.textContent = `Odpovědi mimo výběr (${round.unassigned.length})`;
+      const explanation = document.createElement("p");
+      explanation.dataset.pocitatkoMuted = "";
+      explanation.textContent =
+        "Tyto odpovědi míří na příspěvky mimo soutěžní výběr a nejsou započítané.";
+      const list = document.createElement("ul");
+      round.unassigned.forEach((reaction) => {
+        const item = document.createElement("li");
+        const text = document.createElement("div");
+        const author = document.createElement("strong");
+        author.textContent = `${reaction.author}: `;
+        text.append(author, document.createTextNode(reaction.text || "(bez textu)"));
+        const links = document.createElement("div");
+        links.dataset.pocitatkoUnassignedLinks = "";
+        links.append(makePostLink(reaction, "Odpověď"));
+        const parent = state.posts.find((post) => post.id === reaction.parentId);
+        if (parent) {
+          links.append(
+            document.createTextNode(" · "),
+            makePostLink(parent, `Cíl: ${parent.author} #${parent.id}`),
+          );
+        } else {
+          const target = document.createElement("span");
+          target.textContent = ` · Cíl: ${reaction.parentLabel || `#${reaction.parentId}`}`;
+          links.append(target);
+        }
+        item.append(text, links);
+        list.append(item);
+      });
+      details.append(summary, explanation, list);
+      prompt.append(details);
     }
 
     const candidates = document.createElement("section");

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.7.2
+// @version      0.7.3
 // @description  Local read-only visual counting helper for classic Okoun and experimental Kapybara rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -18,7 +18,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.7.2";
+  var VERSION = "0.7.3";
   var IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -878,10 +878,39 @@
         prompt.append(tieWarning);
       }
       if (round.unassigned.length) {
-        const warning = document.createElement("p");
-        warning.dataset.pocitatkoMuted = "";
-        warning.textContent = `${round.unassigned.length} odpov\u011Bd\xED m\xED\u0159\xED na p\u0159\xEDsp\u011Bvky mimo na\u010Dten\xFD v\xFDb\u011Br; nejsou potichu zapo\u010D\xEDtan\xE9.`;
-        prompt.append(warning);
+        const details = document.createElement("details");
+        details.dataset.pocitatkoUnassigned = "";
+        const summary = document.createElement("summary");
+        summary.textContent = `Odpov\u011Bdi mimo v\xFDb\u011Br (${round.unassigned.length})`;
+        const explanation = document.createElement("p");
+        explanation.dataset.pocitatkoMuted = "";
+        explanation.textContent = "Tyto odpov\u011Bdi m\xED\u0159\xED na p\u0159\xEDsp\u011Bvky mimo sout\u011B\u017En\xED v\xFDb\u011Br a nejsou zapo\u010D\xEDtan\xE9.";
+        const list = document.createElement("ul");
+        round.unassigned.forEach((reaction) => {
+          const item = document.createElement("li");
+          const text = document.createElement("div");
+          const author = document.createElement("strong");
+          author.textContent = `${reaction.author}: `;
+          text.append(author, document.createTextNode(reaction.text || "(bez textu)"));
+          const links = document.createElement("div");
+          links.dataset.pocitatkoUnassignedLinks = "";
+          links.append(makePostLink(reaction, "Odpov\u011B\u010F"));
+          const parent = state.posts.find((post) => post.id === reaction.parentId);
+          if (parent) {
+            links.append(
+              document.createTextNode(" \xB7 "),
+              makePostLink(parent, `C\xEDl: ${parent.author} #${parent.id}`)
+            );
+          } else {
+            const target = document.createElement("span");
+            target.textContent = ` \xB7 C\xEDl: ${reaction.parentLabel || `#${reaction.parentId}`}`;
+            links.append(target);
+          }
+          item.append(text, links);
+          list.append(item);
+        });
+        details.append(summary, explanation, list);
+        prompt.append(details);
       }
       const candidates = document.createElement("section");
       candidates.dataset.pocitatkoCandidates = "";
@@ -1116,6 +1145,11 @@
     #${ids.overlay} [data-pocitatko-tie] { margin: 12px 0 0; padding: 11px 12px; border: 2px solid #bb6b16; border-radius: 9px; background: #fff0d3; color: #613200; font-weight: 700; }
     #${ids.overlay} [data-pocitatko-warning] { padding: 9px 10px; border-left: 4px solid #bb6b16; background: #fff0d3; color: #613200; }
     #${ids.overlay} details { margin-top: 8px; }
+    #${ids.overlay} [data-pocitatko-unassigned] { padding: 8px 10px; border: 1px solid #c8bfae; border-radius: 8px; background: #fffdf8; }
+    #${ids.overlay} [data-pocitatko-unassigned] > summary { cursor: pointer; font-weight: 700; }
+    #${ids.overlay} [data-pocitatko-unassigned] > ul { margin: 8px 0 0; padding-left: 20px; }
+    #${ids.overlay} [data-pocitatko-unassigned] li { margin: 8px 0; overflow-wrap: anywhere; }
+    #${ids.overlay} [data-pocitatko-unassigned-links] { margin-top: 2px; color: #6d665d; font-size: 12px; }
     #${ids.overlay} [data-pocitatko-reactions] { margin: 7px 0 0; padding-left: 21px; }
     #${ids.overlay} [data-pocitatko-native-reactions] { margin: 7px 0 0; padding-left: 21px; }
     #${ids.overlay} [data-pocitatko-reactions] li { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 8px; margin: 5px 0; }
