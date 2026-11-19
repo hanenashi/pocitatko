@@ -10,6 +10,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     manualWinnerId: null,
     tieAccepted: false,
     countingMode: "replyPosts",
+    includeReplyImages: false,
     excludedReactionIds: new Set(),
     olderUrl: "",
     loadedUrls: new Set(),
@@ -61,7 +62,12 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
   const winnerAnnouncementsAfter = (sourceId) => plugin.roundEndsAfter(state.posts, sourceId);
   const suggestedEndId = (sourceId) => plugin.suggestedEndId(state.posts, sourceId);
   const buildRound = (sourceId = state.sourceId) =>
-    plugin.buildRound({ posts: state.posts, sourceId, endId: state.endId });
+    plugin.buildRound({
+      posts: state.posts,
+      sourceId,
+      endId: state.endId,
+      includeReplyImages: state.includeReplyImages,
+    });
   const rankedCandidates = (round) =>
     plugin.rankCandidates(round, {
       excludedReactionIds: state.excludedReactionIds,
@@ -214,6 +220,25 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     return wrapper;
   }
 
+  function makeReplyImageSwitch(onChange) {
+    if (!plugin.supportsReplyImageCandidates) return document.createDocumentFragment();
+    const wrapper = document.createElement("label");
+    wrapper.dataset.pocitatkoReplyImages = "";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = state.includeReplyImages;
+    const label = document.createElement("strong");
+    label.textContent = "Zahrnout obrázky v odpovědích jako soutěžní";
+    input.addEventListener("change", () => {
+      state.includeReplyImages = input.checked;
+      state.manualWinnerId = null;
+      state.tieAccepted = false;
+      onChange();
+    });
+    wrapper.append(input, label);
+    return wrapper;
+  }
+
   function renderSourceChooser() {
     const { body, overlay } = overlayParts();
     if (!body || !overlay) return;
@@ -286,6 +311,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
         summary,
         makeEndSelector(selected),
         makeCountingModeSelector(renderSourceChooser),
+        makeReplyImageSwitch(renderSourceChooser),
         makeButton("Potvrdit a spočítat", renderRound, "primary"),
       );
       body.append(confirm);
@@ -355,7 +381,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     ];
     const tieStatus = isTie ? ` · REMÍZA ${leaders.length}× ${voteCountLabel(topPoints)}` : "";
     setHeader(
-      `${round.candidates.length} soutěžících · ${includedReactionCount} hlasů${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}${ignoredReplyCount ? ` · ${ignoredReplyCount} odpovědí nezapočítáno` : ""}${tieStatus}`,
+      `${round.candidates.length} soutěžících · ${voteCountLabel(includedReactionCount)}${excludedReactionCount ? ` · ${excludedReactionCount} vyřazeno` : ""}${ignoredReplyCount ? ` · ${ignoredReplyCount} odpovědí nezapočítáno` : ""}${tieStatus}`,
       buttons,
     );
     body.replaceChildren();
@@ -371,6 +397,14 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     promptMeta.textContent = `${round.source.author} · ${round.source.timestamp}`;
     prompt.append(promptMeta, makePostLink(round.source));
     prompt.append(makeCountingModeSelector(() => renderRound()));
+    prompt.append(makeReplyImageSwitch(() => renderRound()));
+    if (state.includeReplyImages) {
+      const candidateWarning = document.createElement("p");
+      candidateWarning.dataset.pocitatkoWarning = "";
+      candidateWarning.textContent =
+        "Zahrnuty jsou i obrázky vložené jako odpovědi. Zkontroluj, zda jde opravdu o soutěžní příspěvky, ne o obrázkový komentář.";
+      prompt.append(candidateWarning);
+    }
     if (state.countingMode === "nativeReactions") {
       const modeWarning = document.createElement("p");
       modeWarning.dataset.pocitatkoWarning = "";
@@ -445,6 +479,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
           : `${stats.uniqueReactors} lidí`,
         stats.voteSource === "replyPosts" ? `${stats.reactionPosts} odpovědí` : "",
         stats.voteSource === "nativeReactions" ? "autoři reakcí nejsou dostupní" : "",
+        candidate.parentId ? "obrázek v odpovědi" : "",
         stats.excludedPosts ? `${stats.excludedPosts} vyřazeno` : "",
         stats.ignoredReplyPosts ? `${stats.ignoredReplyPosts} odpovědí nezapočítáno` : "",
         isTie && leaderIds.has(candidate.id)
@@ -573,7 +608,7 @@ export function createOverlay({ plugin, ids, version, addStyles }) {
     Object.assign(state, {
       posts: [], sourceId: null, endId: null, endManuallyChanged: false,
       manualWinnerId: null, tieAccepted: false, countingMode: "replyPosts",
-      excludedReactionIds: new Set(), olderUrl: "",
+      includeReplyImages: false, excludedReactionIds: new Set(), olderUrl: "",
       loadedUrls: new Set(), error: "",
     });
 

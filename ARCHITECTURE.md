@@ -22,6 +22,8 @@ Each entry exported from `src/plugins/` supplies:
 - `sourcePosts`, `isRoundEnd`, `roundEndsAfter`, and `suggestedEndId` for the
   club's workflow;
 - `countingModes` for voting systems available on the current frontend;
+- `supportsReplyImageCandidates` for clubs that allow the reviewer to recover
+  accidentally replied image entries;
 - `buildRound` for assigning normalized Okoun posts to entries and reactions;
 - `scoreCandidate` and `rankCandidates` for the club's voting rules;
 - `formatResult`, `formatTie`, and `sourceExplanation` for club-specific output

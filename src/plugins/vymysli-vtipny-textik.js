@@ -2,6 +2,7 @@ export const vymysliVtipnyTextik = {
   id: "vymysli_vtipny_textik",
   name: "Vymysli vtipný textík",
   boardPath: "/boards/vymysli_vtipny_textik",
+  supportsReplyImageCandidates: true,
   matchesBoardUrl(url) {
     return (
       ["https://www.okoun.cz", "https://kapybara.okoun.cz"].includes(url.origin) &&
@@ -34,16 +35,21 @@ export const vymysliVtipnyTextik = {
   suggestedEndId(posts, sourceId) {
     return this.roundEndsAfter(posts, sourceId)[0]?.id || null;
   },
-  buildRound({ posts, sourceId, endId }) {
+  buildRound({ posts, sourceId, endId, includeReplyImages = false }) {
     const source = posts.find((post) => post.id === sourceId) || null;
     if (!source) return { source: null, end: null, candidates: [], unassigned: [] };
     const end = posts.find((post) => post.id === endId) || null;
     const beforeEnd = (post) => !end || post.id < end.id;
-    const candidates = posts
+    const candidatePosts = posts
       .filter(
         (post) =>
-          post.id > source.id && beforeEnd(post) && !post.parentId && post.imageUrls.length,
-      )
+          post.id > source.id &&
+          beforeEnd(post) &&
+          (includeReplyImages || !post.parentId) &&
+          post.imageUrls.length,
+      );
+    const candidateIds = new Set(candidatePosts.map((candidate) => candidate.id));
+    const candidates = candidatePosts
       .map((candidate) => ({
         ...candidate,
         reactions: posts
@@ -52,17 +58,18 @@ export const vymysliVtipnyTextik = {
               post.id > candidate.id &&
               beforeEnd(post) &&
               post.parentId === candidate.id &&
+              !candidateIds.has(post.id) &&
               !this.isRoundEnd(post),
           )
           .sort((a, b) => a.id - b.id),
       }))
       .sort((a, b) => a.id - b.id);
-    const candidateIds = new Set(candidates.map((candidate) => candidate.id));
     const unassigned = posts.filter(
       (post) =>
         post.id > source.id &&
         beforeEnd(post) &&
         post.parentId &&
+        !candidateIds.has(post.id) &&
         !candidateIds.has(post.parentId),
     );
     return { source, end, candidates, unassigned };

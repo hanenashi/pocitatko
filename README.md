@@ -1,6 +1,6 @@
 # Pociťátko
 
-[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.7.1**
+[Install Pociťátko](https://raw.githubusercontent.com/hanenashi/pocitatko/main/pocitatko.user.js) · Current version: **0.7.2**
 
 Pociťátko is a read-only browser userscript concept for helping moderate
 image-caption contests on Okoun.
@@ -27,14 +27,14 @@ The first plugin preserves the existing `vymysli_vtipny_textik` workflow. New
 clubs can use different rules without adding club-specific guesses to the
 shared core. Plugins are bundled into the same installable userscript for now.
 
-Version 0.7.1 is deliberately local-only. It reads the currently open public
+Version 0.7.2 is deliberately local-only. It reads the currently open public
 board page and older pages explicitly requested by the reviewer, performs the
 count in memory, and offers copyable result text. It has no account sign-in,
 remote persistence, background collection, or historical-statistics layer.
 
 ## Experimental Kapybara support
 
-Version 0.7.1 also runs on the Kapybara version of `vymysli_vtipny_textik`.
+Version 0.7.2 also runs on the Kapybara version of `vymysli_vtipny_textik`.
 The source and round review workflow is shared with classic Okoun, while a
 round-wide selector chooses exactly one voting system:
 
@@ -51,6 +51,11 @@ presenting aggregate reactions as unique people.
 Kapybara can omit visible direct-parent links in compact/mobile post layouts.
 When that happens, Pociťátko falls back to the post's stable thread ID so
 reply votes remain attached to the competition entry instead of disappearing.
+
+The optional **Zahrnout obrázky v odpovědích jako soutěžní** switch handles
+entries accidentally posted as replies. It is off by default, marks every
+included reply-image card, and stops that image post from also being counted
+as a reaction to its parent.
 
 ## Development
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pociťátko
 // @namespace    https://github.com/hanenashi/pocitatko
-// @version      0.7.1
+// @version      0.7.2
 // @description  Local read-only visual counting helper for classic Okoun and experimental Kapybara rounds.
 // @author       hanenashi
 // @match        https://www.okoun.cz/boards/vymysli_vtipny_textik*
@@ -18,7 +18,7 @@
 
 (() => {
   // src/constants.js
-  var VERSION = "0.7.1";
+  var VERSION = "0.7.2";
   var IDS = {
     launcher: "pocitatko-launcher",
     overlay: "pocitatko-overlay",
@@ -30,6 +30,7 @@
     id: "vymysli_vtipny_textik",
     name: "Vymysli vtipn\xFD text\xEDk",
     boardPath: "/boards/vymysli_vtipny_textik",
+    supportsReplyImageCandidates: true,
     matchesBoardUrl(url) {
       return ["https://www.okoun.cz", "https://kapybara.okoun.cz"].includes(url.origin) && (url.pathname === this.boardPath || url.pathname.startsWith(`${this.boardPath}/`));
     },
@@ -54,22 +55,23 @@
     suggestedEndId(posts, sourceId) {
       return this.roundEndsAfter(posts, sourceId)[0]?.id || null;
     },
-    buildRound({ posts, sourceId, endId }) {
+    buildRound({ posts, sourceId, endId, includeReplyImages = false }) {
       const source = posts.find((post) => post.id === sourceId) || null;
       if (!source) return { source: null, end: null, candidates: [], unassigned: [] };
       const end = posts.find((post) => post.id === endId) || null;
       const beforeEnd = (post) => !end || post.id < end.id;
-      const candidates = posts.filter(
-        (post) => post.id > source.id && beforeEnd(post) && !post.parentId && post.imageUrls.length
-      ).map((candidate) => ({
+      const candidatePosts = posts.filter(
+        (post) => post.id > source.id && beforeEnd(post) && (includeReplyImages || !post.parentId) && post.imageUrls.length
+      );
+      const candidateIds = new Set(candidatePosts.map((candidate) => candidate.id));
+      const candidates = candidatePosts.map((candidate) => ({
         ...candidate,
         reactions: posts.filter(
-          (post) => post.id > candidate.id && beforeEnd(post) && post.parentId === candidate.id && !this.isRoundEnd(post)
+          (post) => post.id > candidate.id && beforeEnd(post) && post.parentId === candidate.id && !candidateIds.has(post.id) && !this.isRoundEnd(post)
         ).sort((a, b) => a.id - b.id)
       })).sort((a, b) => a.id - b.id);
-      const candidateIds = new Set(candidates.map((candidate) => candidate.id));
       const unassigned = posts.filter(
-        (post) => post.id > source.id && beforeEnd(post) && post.parentId && !candidateIds.has(post.parentId)
+        (post) => post.id > source.id && beforeEnd(post) && post.parentId && !candidateIds.has(post.id) && !candidateIds.has(post.parentId)
       );
       return { source, end, candidates, unassigned };
     },
@@ -493,6 +495,7 @@
       manualWinnerId: null,
       tieAccepted: false,
       countingMode: "replyPosts",
+      includeReplyImages: false,
       excludedReactionIds: /* @__PURE__ */ new Set(),
       olderUrl: "",
       loadedUrls: /* @__PURE__ */ new Set(),
@@ -539,7 +542,12 @@
     const imagePosts = () => plugin.sourcePosts(state.posts);
     const winnerAnnouncementsAfter = (sourceId) => plugin.roundEndsAfter(state.posts, sourceId);
     const suggestedEndId = (sourceId) => plugin.suggestedEndId(state.posts, sourceId);
-    const buildRound = (sourceId = state.sourceId) => plugin.buildRound({ posts: state.posts, sourceId, endId: state.endId });
+    const buildRound = (sourceId = state.sourceId) => plugin.buildRound({
+      posts: state.posts,
+      sourceId,
+      endId: state.endId,
+      includeReplyImages: state.includeReplyImages
+    });
     const rankedCandidates = (round) => plugin.rankCandidates(round, {
       excludedReactionIds: state.excludedReactionIds,
       countingMode: state.countingMode
@@ -679,6 +687,24 @@
       wrapper.append(label, select);
       return wrapper;
     }
+    function makeReplyImageSwitch(onChange) {
+      if (!plugin.supportsReplyImageCandidates) return document.createDocumentFragment();
+      const wrapper = document.createElement("label");
+      wrapper.dataset.pocitatkoReplyImages = "";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = state.includeReplyImages;
+      const label = document.createElement("strong");
+      label.textContent = "Zahrnout obr\xE1zky v odpov\u011Bd\xEDch jako sout\u011B\u017En\xED";
+      input.addEventListener("change", () => {
+        state.includeReplyImages = input.checked;
+        state.manualWinnerId = null;
+        state.tieAccepted = false;
+        onChange();
+      });
+      wrapper.append(input, label);
+      return wrapper;
+    }
     function renderSourceChooser() {
       const { body, overlay } = overlayParts();
       if (!body || !overlay) return;
@@ -747,6 +773,7 @@
           summary,
           makeEndSelector(selected),
           makeCountingModeSelector(renderSourceChooser),
+          makeReplyImageSwitch(renderSourceChooser),
           makeButton("Potvrdit a spo\u010D\xEDtat", renderRound, "primary")
         );
         body.append(confirm);
@@ -810,7 +837,7 @@
       ];
       const tieStatus = isTie ? ` \xB7 REM\xCDZA ${leaders.length}\xD7 ${voteCountLabel(topPoints)}` : "";
       setHeader(
-        `${round.candidates.length} sout\u011B\u017E\xEDc\xEDch \xB7 ${includedReactionCount} hlas\u016F${excludedReactionCount ? ` \xB7 ${excludedReactionCount} vy\u0159azeno` : ""}${ignoredReplyCount ? ` \xB7 ${ignoredReplyCount} odpov\u011Bd\xED nezapo\u010D\xEDt\xE1no` : ""}${tieStatus}`,
+        `${round.candidates.length} sout\u011B\u017E\xEDc\xEDch \xB7 ${voteCountLabel(includedReactionCount)}${excludedReactionCount ? ` \xB7 ${excludedReactionCount} vy\u0159azeno` : ""}${ignoredReplyCount ? ` \xB7 ${ignoredReplyCount} odpov\u011Bd\xED nezapo\u010D\xEDt\xE1no` : ""}${tieStatus}`,
         buttons
       );
       body.replaceChildren();
@@ -825,6 +852,13 @@
       promptMeta.textContent = `${round.source.author} \xB7 ${round.source.timestamp}`;
       prompt.append(promptMeta, makePostLink(round.source));
       prompt.append(makeCountingModeSelector(() => renderRound()));
+      prompt.append(makeReplyImageSwitch(() => renderRound()));
+      if (state.includeReplyImages) {
+        const candidateWarning = document.createElement("p");
+        candidateWarning.dataset.pocitatkoWarning = "";
+        candidateWarning.textContent = "Zahrnuty jsou i obr\xE1zky vlo\u017Een\xE9 jako odpov\u011Bdi. Zkontroluj, zda jde opravdu o sout\u011B\u017En\xED p\u0159\xEDsp\u011Bvky, ne o obr\xE1zkov\xFD koment\xE1\u0159.";
+        prompt.append(candidateWarning);
+      }
       if (state.countingMode === "nativeReactions") {
         const modeWarning = document.createElement("p");
         modeWarning.dataset.pocitatkoWarning = "";
@@ -885,6 +919,7 @@
           stats.voteSource === "nativeReactions" ? "nativn\xED reakce Kapybary" : `${stats.uniqueReactors} lid\xED`,
           stats.voteSource === "replyPosts" ? `${stats.reactionPosts} odpov\u011Bd\xED` : "",
           stats.voteSource === "nativeReactions" ? "auto\u0159i reakc\xED nejsou dostupn\xED" : "",
+          candidate.parentId ? "obr\xE1zek v odpov\u011Bdi" : "",
           stats.excludedPosts ? `${stats.excludedPosts} vy\u0159azeno` : "",
           stats.ignoredReplyPosts ? `${stats.ignoredReplyPosts} odpov\u011Bd\xED nezapo\u010D\xEDt\xE1no` : "",
           isTie && leaderIds.has(candidate.id) ? acceptedTie ? "spoluv\xEDt\u011Bz" : "rem\xEDza o 1. m\xEDsto" : index === 0 ? "n\xE1vrh Poci\u0165\xE1tka" : ""
@@ -1006,6 +1041,7 @@
         manualWinnerId: null,
         tieAccepted: false,
         countingMode: "replyPosts",
+        includeReplyImages: false,
         excludedReactionIds: /* @__PURE__ */ new Set(),
         olderUrl: "",
         loadedUrls: /* @__PURE__ */ new Set(),
@@ -1059,6 +1095,9 @@
     #${ids.overlay} [data-pocitatko-boundary] { grid-column: 2 / -1; display: grid; gap: 4px; }
     #${ids.overlay} [data-pocitatko-counting-mode] { display: grid; gap: 4px; margin: 10px 0; }
     #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 2 / -1; margin: 0; }
+    #${ids.overlay} [data-pocitatko-reply-images] { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; cursor: pointer; }
+    #${ids.overlay} [data-pocitatko-reply-images] input { flex: 0 0 auto; width: 18px; height: 18px; margin: 1px 0 0; accent-color: #a87900; }
+    #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-reply-images] { grid-column: 2 / -1; margin: 0; }
     #${ids.overlay} [data-pocitatko-boundary] select, #${ids.overlay} [data-pocitatko-counting-mode] select { max-width: 100%; padding: 7px; border: 1px solid #aaa093; border-radius: 7px; background: #fffdf8; color: inherit; font: inherit; }
     #${ids.overlay} [data-pocitatko-round] { display: grid; grid-template-columns: minmax(220px, .6fr) minmax(340px, 1.4fr); min-height: 100%; }
     #${ids.overlay} [data-pocitatko-prompt] { position: sticky; top: 0; align-self: start; padding: 14px; }
@@ -1091,6 +1130,7 @@
       #${ids.overlay} [data-pocitatko-confirm] img { width: 72px; height: 62px; }
       #${ids.overlay} [data-pocitatko-boundary] { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 1 / -1; }
+      #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-reply-images] { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-confirm] button { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-round] { display: block; }
       #${ids.overlay} [data-pocitatko-prompt] { position: static; }

@@ -43,6 +43,41 @@ test("allows an image reply as the source without treating later image replies a
   assert.equal(round.source.id, 101);
   assert.deepEqual(round.candidates.map((post) => post.id), [102]);
   assert.deepEqual(round.candidates[0].reactions.map((post) => post.id), [103, 104]);
+
+  const roundWithReplyImages = plugin.buildRound({
+    posts,
+    sourceId: 101,
+    endId: 105,
+    includeReplyImages: true,
+  });
+  assert.deepEqual(roundWithReplyImages.candidates.map((post) => post.id), [102, 104]);
+  assert.deepEqual(
+    roundWithReplyImages.candidates[0].reactions.map((post) => post.id),
+    [103],
+  );
+});
+
+test("can include a misposted image reply as a contestant", () => {
+  const posts = [
+    { id: 100, parentId: null, imageUrls: ["assignment.jpg"], text: "" },
+    { id: 101, parentId: null, imageUrls: [], text: "discussion" },
+    { id: 102, parentId: 101, imageUrls: ["misposted-entry.jpg"], text: "" },
+    { id: 103, parentId: 102, imageUrls: [], text: "!" },
+  ];
+
+  assert.deepEqual(
+    plugin.buildRound({ posts, sourceId: 100, endId: null }).candidates,
+    [],
+  );
+  const round = plugin.buildRound({
+    posts,
+    sourceId: 100,
+    endId: null,
+    includeReplyImages: true,
+  });
+  assert.deepEqual(round.candidates.map((post) => post.id), [102]);
+  assert.deepEqual(round.candidates[0].reactions.map((post) => post.id), [103]);
+  assert.deepEqual(round.unassigned.map((post) => post.id), []);
 });
 
 test("offers native reactions only on Kapybara", () => {

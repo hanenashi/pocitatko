@@ -26,6 +26,9 @@ export function addStyles(ids) {
     #${ids.overlay} [data-pocitatko-boundary] { grid-column: 2 / -1; display: grid; gap: 4px; }
     #${ids.overlay} [data-pocitatko-counting-mode] { display: grid; gap: 4px; margin: 10px 0; }
     #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 2 / -1; margin: 0; }
+    #${ids.overlay} [data-pocitatko-reply-images] { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; cursor: pointer; }
+    #${ids.overlay} [data-pocitatko-reply-images] input { flex: 0 0 auto; width: 18px; height: 18px; margin: 1px 0 0; accent-color: #a87900; }
+    #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-reply-images] { grid-column: 2 / -1; margin: 0; }
     #${ids.overlay} [data-pocitatko-boundary] select, #${ids.overlay} [data-pocitatko-counting-mode] select { max-width: 100%; padding: 7px; border: 1px solid #aaa093; border-radius: 7px; background: #fffdf8; color: inherit; font: inherit; }
     #${ids.overlay} [data-pocitatko-round] { display: grid; grid-template-columns: minmax(220px, .6fr) minmax(340px, 1.4fr); min-height: 100%; }
     #${ids.overlay} [data-pocitatko-prompt] { position: sticky; top: 0; align-self: start; padding: 14px; }
@@ -58,6 +61,7 @@ export function addStyles(ids) {
       #${ids.overlay} [data-pocitatko-confirm] img { width: 72px; height: 62px; }
       #${ids.overlay} [data-pocitatko-boundary] { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-counting-mode] { grid-column: 1 / -1; }
+      #${ids.overlay} [data-pocitatko-confirm] [data-pocitatko-reply-images] { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-confirm] button { grid-column: 1 / -1; }
       #${ids.overlay} [data-pocitatko-round] { display: block; }
       #${ids.overlay} [data-pocitatko-prompt] { position: static; }
